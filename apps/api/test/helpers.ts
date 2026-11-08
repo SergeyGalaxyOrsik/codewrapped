@@ -36,8 +36,9 @@ export async function setup(opts: { syncLimit?: { requests: number; windowMs: nu
       body: init.body === undefined ? undefined : typeof init.body === "string" ? init.body : JSON.stringify(init.body),
     });
 
-  const createUser = async (id: string, githubLogin: string) => {
-    await db.insert(users).values({ id, name: githubLogin, email: `${id}@example.test`, githubLogin });
+  const createUser = async (id: string, githubLogin: string, opts: { githubCreatedAt?: Date } = {}) => {
+    const githubCreatedAt = opts.githubCreatedAt ?? new Date("2020-01-01T00:00:00Z");
+    await db.insert(users).values({ id, name: githubLogin, email: `${id}@example.test`, githubLogin, githubCreatedAt });
     await ensureProfile(db, { id, name: githubLogin, image: null, githubLogin });
   };
 

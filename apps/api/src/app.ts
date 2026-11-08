@@ -1,4 +1,4 @@
-import { and, count, eq, gt, isNull, max, min, sql } from "drizzle-orm";
+import { and, count, eq, gt, gte, isNull, lte, max, min, sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
@@ -11,6 +11,19 @@ import { randomId, randomToken, sha256, userCode } from "./lib/crypto";
 import { fail } from "./lib/errors";
 import { handleTaken } from "./lib/profiles";
 import { RateLimiter } from "./lib/ratelimit";
+import {
+  BOARD_METRICS,
+  BOARD_PERIODS,
+  boardRange,
+  MIN_ACCOUNT_AGE_DAYS,
+  percentile,
+  rank,
+  score,
+  type BoardMetric,
+  type BoardPeriod,
+  type Candidate,
+} from "./lib/leaderboard";
+import { flagDay } from "./lib/plausibility";
 import { HANDLE_RE, SyncBody } from "./validation";
 
 export type AppDeps = {
@@ -34,6 +47,7 @@ export function createApp(deps: AppDeps) {
   const { db } = deps;
   const now = deps.now ?? (() => new Date());
   const cache = new TtlCache<PublicProfile>(5 * 60_000);
+  const boards = new TtlCache<Candidate[]>(5 * 60_000);
   const syncLimiter = new RateLimiter(deps.syncLimit?.requests ?? 30, deps.syncLimit?.windowMs ?? 10 * 60_000);
   const app = new Hono<{ Variables: Vars }>();
 
@@ -218,10 +232,12 @@ export function createApp(deps: AppDeps) {
         // One row per user, machine, source and day. Re-sending a day replaces it.
         await db
           .insert(dailyStats)
-          .values(days.map((d) => ({ userId, machineId, source: d.source, day: d.day, data: d, schemaVersion: d.schemaVersion, updatedAt: now() })))
+          .values(
+            days.map((d) => ({ userId, machineId, source: d.source, day: d.day, data: d, schemaVersion: d.schemaVersion, flag: flagDay(d), updatedAt: now() })),
+          )
           .onConflictDoUpdate({
             target: [dailyStats.userId, dailyStats.machineId, dailyStats.source, dailyStats.day],
-            set: { data: sql`excluded.data`, schemaVersion: sql`excluded.schema_version`, updatedAt: sql`excluded.updated_at` },
+            set: { data: sql`excluded.data`, schemaVersion: sql`excluded.schema_version`, flag: sql`excluded.flag`, updatedAt: sql`excluded.updated_at` },
           });
       }
       const [profile] = await db
@@ -230,9 +246,114 @@ export function createApp(deps: AppDeps) {
         .where(eq(profiles.userId, userId))
         .returning({ handle: profiles.handle });
       await bust(userId);
+      boards.bust("");
       return c.json({ received: days.length, profileUrl: profile ? `${deps.webUrl}/@${profile.handle}` : null });
     },
   );
+
+  // ---- leaderboards ----
+
+  const today = () => now().toISOString().slice(0, 10);
+
+  /** Everyone with synced days in the range, scored. Opt-in and eligibility are decided per board. */
+  const candidates = async (period: BoardPeriod): Promise<Candidate[]> => {
+    const { start, end } = boardRange(period, today());
+    const key = `${start}:${end}`;
+    const hit = boards.get(key);
+    if (hit) return hit;
+    const rows = await db
+      .select({
+        userId: dailyStats.userId,
+        data: dailyStats.data,
+        flag: dailyStats.flag,
+        handle: profiles.handle,
+        displayName: profiles.displayName,
+        avatarUrl: profiles.avatarUrl,
+        xHandle: profiles.xHandle,
+        optedIn: profiles.leaderboard,
+        trusted: profiles.leaderboardTrusted,
+        githubCreatedAt: users.githubCreatedAt,
+      })
+      .from(dailyStats)
+      .innerJoin(profiles, eq(profiles.userId, dailyStats.userId))
+      .innerJoin(users, eq(users.id, dailyStats.userId))
+      .where(and(gte(dailyStats.day, start), lte(dailyStats.day, end)));
+    const minCreated = now().getTime() - MIN_ACCOUNT_AGE_DAYS * 86_400_000;
+    const byUser = new Map<string, { first: (typeof rows)[number]; days: (typeof rows)[number]["data"][]; flagged: boolean }>();
+    for (const r of rows) {
+      const u = byUser.get(r.userId) ?? { first: r, days: [], flagged: false };
+      u.days.push(r.data);
+      u.flagged ||= r.flag !== null;
+      byUser.set(r.userId, u);
+    }
+    const list: Candidate[] = [...byUser.values()].map(({ first, days, flagged }) => {
+      const oldEnough = first.githubCreatedAt !== null && first.githubCreatedAt.getTime() <= minCreated;
+      return {
+        userId: first.userId,
+        handle: first.handle,
+        displayName: first.displayName,
+        avatarUrl: first.avatarUrl,
+        xHandle: first.xHandle,
+        optedIn: first.optedIn,
+        eligible: first.trusted || (oldEnough && !flagged),
+        scores: score(days),
+      };
+    });
+    boards.set(key, list);
+    return list;
+  };
+
+  const boardQuery = (c: Context<{ Variables: Vars }>) => {
+    const period = (c.req.query("period") ?? "week") as BoardPeriod;
+    const metric = (c.req.query("metric") ?? "hours") as BoardMetric;
+    if (!BOARD_PERIODS.includes(period) || !BOARD_METRICS.includes(metric)) return null;
+    return { period, metric };
+  };
+
+  app.get("/leaderboard", async (c) => {
+    const q = boardQuery(c);
+    if (!q) return fail(c, 400, "invalid_board", `Use period ${BOARD_PERIODS.join(" or ")} and metric ${BOARD_METRICS.join(", ")}.`);
+    const ranked = rank((await candidates(q.period)).filter((x) => x.optedIn && x.eligible), q.metric);
+    c.header("Cache-Control", "public, max-age=60");
+    return c.json({
+      ...q,
+      range: boardRange(q.period, today()),
+      label: "Self-reported from local logs",
+      participants: ranked.length,
+      entries: ranked.slice(0, 100).map((r) => ({
+        rank: r.rank,
+        handle: r.handle,
+        displayName: r.displayName,
+        avatarUrl: r.avatarUrl,
+        xHandle: r.xHandle,
+        value: r.value,
+      })),
+    });
+  });
+
+  app.get("/leaderboard/me", requireSession, async (c) => {
+    const q = boardQuery(c);
+    if (!q) return fail(c, 400, "invalid_board", `Use period ${BOARD_PERIODS.join(" or ")} and metric ${BOARD_METRICS.join(", ")}.`);
+    const all = await candidates(q.period);
+    const me = all.find((x) => x.userId === c.get("userId"));
+    const [p] = await db.select({ optedIn: profiles.leaderboard }).from(profiles).where(eq(profiles.userId, c.get("userId")));
+    const ranked = rank(all.filter((x) => x.optedIn && x.eligible), q.metric);
+    const mine = ranked.find((x) => x.userId === c.get("userId"));
+    return c.json({
+      optedIn: p?.optedIn ?? false,
+      eligible: me?.eligible ?? null,
+      rank: mine?.rank ?? null,
+      value: mine?.value ?? null,
+      participants: ranked.length,
+    });
+  });
+
+  /** "Top N%" this month by hours, among all eligible active users, opted in or not. */
+  const standing = async (userId: string): Promise<PublicProfile["standing"]> => {
+    const ranked = rank((await candidates("month")).filter((x) => x.eligible), "hours");
+    const pct = percentile(ranked, userId);
+    return pct === null ? null : { percentile: pct, period: "month" };
+  };
 
   // ---- public profile ----
 
@@ -253,6 +374,7 @@ export function createApp(deps: AppDeps) {
         period,
         todayIn(p.timeZone, now()),
       );
+      body.standing = await standing(p.userId);
       cache.set(key, body);
     }
     c.header("Cache-Control", "public, max-age=60");
@@ -287,6 +409,8 @@ export function createApp(deps: AppDeps) {
         avatarUrl: p.avatarUrl,
         timeZone: p.timeZone,
         visibility: { ...DEFAULT_VISIBILITY, ...p.visibility },
+        leaderboard: p.leaderboard,
+        xHandle: p.xHandle,
       },
       synced: stats ?? { days: 0, firstDay: null, lastDay: null },
     });
@@ -336,6 +460,34 @@ export function createApp(deps: AppDeps) {
     await db.update(profiles).set({ visibility, updatedAt: now() }).where(eq(profiles.userId, userId));
     await bust(userId);
     return c.json({ visibility });
+  });
+
+  me.patch("/leaderboard", async (c) => {
+    const body = z
+      .object({
+        enabled: z.boolean().optional(),
+        xHandle: z
+          .string()
+          .trim()
+          .transform((s) => s.replace(/^@/, ""))
+          .pipe(z.string().regex(/^[A-Za-z0-9_]{1,15}$/))
+          .nullable()
+          .optional(),
+      })
+      .strict()
+      .safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return fail(c, 400, "invalid_request", "Send enabled as true or false, and xHandle as 1 to 15 letters, digits or underscores.");
+    const set: Partial<typeof profiles.$inferInsert> = { updatedAt: now() };
+    if (body.data.enabled !== undefined) set.leaderboard = body.data.enabled;
+    if (body.data.xHandle !== undefined) set.xHandle = body.data.xHandle || null;
+    const [p] = await db
+      .update(profiles)
+      .set(set)
+      .where(eq(profiles.userId, c.get("userId")))
+      .returning({ leaderboard: profiles.leaderboard, xHandle: profiles.xHandle });
+    boards.bust("");
+    await bust(c.get("userId"));
+    return c.json(p ?? { leaderboard: false, xHandle: null });
   });
 
   me.get("/tokens", async (c) => {

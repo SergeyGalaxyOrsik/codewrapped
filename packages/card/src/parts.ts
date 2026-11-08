@@ -47,7 +47,11 @@ export function header(f: Frame): El {
       h("img", { src: markDataUri(markSize, d.theme), width: markSize, height: markSize }),
       text(sans(size, c.fg, 500, { letterSpacing: -0.02 * size, lineHeight: 1 }), "codewrapped"),
     ),
-    text(sans(type.label, d.handle ? c.fg : c.muted, d.handle ? 500 : 400), d.handle ? `@${d.handle}` : d.range),
+    div(
+      { alignItems: "center", gap: Math.round(type.label * 0.6) },
+      d.standing ? text(sans(type.label, c.muted), d.standing) : null,
+      text(sans(type.label, d.handle ? c.fg : c.muted, d.handle ? 500 : 400), d.handle ? `@${d.handle}` : d.range),
+    ),
   );
 }
 

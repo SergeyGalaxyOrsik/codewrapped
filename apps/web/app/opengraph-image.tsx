@@ -1,6 +1,6 @@
 import { getProfile } from "@/lib/api";
 import { cardImage } from "@/lib/og";
-import { exampleSummary } from "@/lib/sample";
+import { exampleSummary } from "@codewrapped/card/element";
 
 export const alt = "A codewrapped card: tokens, hours, repositories and tools from coding agent logs";
 export const size = { width: 1200, height: 675 };

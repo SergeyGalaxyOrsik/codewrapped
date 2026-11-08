@@ -8,5 +8,5 @@ export async function GET(req: Request, { params }: { params: Promise<{ handle: 
   if (!PERIODS.includes(period)) return new Response("Unknown period", { status: 400 });
   const profile = await getProfile(handle.replace(/^@/, ""), period);
   if (!profile) return new Response("Not found", { status: 404 });
-  return cardImage(profile.summary, profile.profile.handle);
+  return cardImage(profile.summary, profile.profile.handle, profile.standing ?? null);
 }

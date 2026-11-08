@@ -21,10 +21,14 @@ function loadFonts() {
 }
 
 /** The landscape card as a PNG, the same layout the CLI renders. */
-export async function cardImage(summary: CardSummary, handle: string | null): Promise<ImageResponse> {
+export async function cardImage(
+  summary: CardSummary,
+  handle: string | null,
+  standing: { percentile: number; period: "month" } | null = null,
+): Promise<ImageResponse> {
   const { width, height } = FORMATS.landscape;
   // The card's element tree has the shape of React elements.
-  const element = cardElement(summary, { theme: "light", handle }) as unknown as ReactElement;
+  const element = cardElement(summary, { theme: "light", handle, standing }) as unknown as ReactElement;
   return new ImageResponse(element, {
     width,
     height,

@@ -19,6 +19,7 @@ const config: NextConfig = {
     return [
       { source: "/@:handle", destination: "/u/:handle/30d" },
       { source: "/@:handle/:period", destination: "/u/:handle/:period" },
+      { source: "/leaderboard", destination: "/leaderboard/week/hours" },
     ];
   },
 };

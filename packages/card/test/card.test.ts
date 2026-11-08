@@ -65,6 +65,14 @@ describe("public summaries", () => {
   });
 });
 
+describe("standing", () => {
+  it("shows the percentile next to a handle, never on a local card", () => {
+    const s = cases.small!.summary;
+    expect(cardData(s, { handle: "ada", standing: { percentile: 4, period: "month" } }).standing).toBe("Top 4% this month");
+    expect(cardData(s, { standing: { percentile: 4, period: "month" } }).standing).toBeNull();
+  });
+});
+
 describe("heatSteps", () => {
   it("leaves empty cells at 0 and gives the busiest cell the top step", () => {
     const grid = Array.from({ length: 7 }, () => new Array<number>(24).fill(0));

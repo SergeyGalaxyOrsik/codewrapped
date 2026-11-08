@@ -14,7 +14,13 @@ function toReact(node: El | string, key?: number): ReactNode {
   );
 }
 
-type Props = { summary: CardSummary; handle?: string | null; animate?: boolean; label?: string };
+type Props = {
+  summary: CardSummary;
+  handle?: string | null;
+  standing?: { percentile: number; period: "month" } | null;
+  animate?: boolean;
+  label?: string;
+};
 
 type Variant = { format: CardFormat; theme: "light" | "dark"; className: string };
 
@@ -27,7 +33,7 @@ const VARIANTS: Variant[] = [
 ];
 
 /** The card as HTML, in light and dark, scaled to the container width. */
-export function Card({ summary, handle = null, animate = false, label = "Card" }: Props) {
+export function Card({ summary, handle = null, standing = null, animate = false, label = "Card" }: Props) {
   return (
     <figure aria-label={label} className="m-0">
       {VARIANTS.map((v) => {
@@ -35,7 +41,7 @@ export function Card({ summary, handle = null, animate = false, label = "Card" }
         return (
           <div key={`${v.format}-${v.theme}`} className={v.className}>
             <ScaledCard width={width} height={height} animate={animate}>
-              {toReact(cardElement(summary, { theme: v.theme, handle, format: v.format }))}
+              {toReact(cardElement(summary, { theme: v.theme, handle, standing, format: v.format }))}
             </ScaledCard>
           </div>
         );

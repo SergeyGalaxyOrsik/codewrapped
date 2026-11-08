@@ -117,7 +117,7 @@ export default async function ProfilePage({ params }: Params) {
             </p>
           </div>
         ) : (
-          <Card summary={s} handle={profile.handle} animate label={`Card of @${profile.handle}, ${periodLabel(s)}`} />
+          <Card summary={s} handle={profile.handle} standing={data.standing} animate label={`Card of @${profile.handle}, ${periodLabel(s)}`} />
         )}
 
         {data.calendar && (

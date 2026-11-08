@@ -79,6 +79,7 @@ export const site = {
   host: "codewrapped.app",
   url: "https://codewrapped.app",
   apiUrl: "https://api.codewrapped.app",
+  repo: "https://github.com/SergeyGalaxyOrsik/codewrapped",
   command: "npx codewrapped",
 } as const;
 

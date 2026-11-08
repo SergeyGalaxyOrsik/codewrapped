@@ -36,6 +36,8 @@ export type PublicProfile = {
   calendar: Array<{ day: string; minutes: number }> | null;
   /** Totals since the first synced day. */
   allTime: { firstDay: string | null; activeMinutes: number; tokens: number; sessions: number; costUsd: number | null };
+  /** "Top 4% this month" by wall-clock hours, once enough people are active. */
+  standing?: { percentile: number; period: "month" } | null;
 };
 
 /** YYYY-MM-DD in a timezone. */

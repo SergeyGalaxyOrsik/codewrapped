@@ -2,12 +2,33 @@
   "name": "codewrapped",
   "version": "0.1.0",
   "description": "A Wrapped for coding agents. Reads local Claude Code and Codex logs and shows your stats.",
+  "keywords": [
+    "claude-code",
+    "codex",
+    "wrapped",
+    "stats",
+    "cli",
+    "ai",
+    "coding-agents"
+  ],
+  "homepage": "https://codewrapped.app",
+  "bugs": {
+    "url": "https://github.com/SergeyGalaxyOrsik/codewrapped/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SergeyGalaxyOrsik/codewrapped.git",
+    "directory": "apps/cli"
+  },
+  "license": "MIT",
+  "author": "SergeyGalaxyOrsik",
   "type": "module",
   "bin": {
     "codewrapped": "./dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
   "engines": {
     "node": ">=20.12"
@@ -25,6 +46,5 @@
     "@codewrapped/stats": "workspace:*",
     "@resvg/resvg-wasm": "2.6.2",
     "satori": "0.63.2"
-  },
-  "license": "MIT"
+  }
 }

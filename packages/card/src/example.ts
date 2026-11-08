@@ -1,8 +1,8 @@
 import { addDays, emptyAggregate, emptyMask, encodeMask, setRange, summarize, type Summary } from "@codewrapped/stats";
 
 /**
- * An example card for the landing page when no hero profile is configured.
- * Round numbers on purpose, and labelled "Example" where it is shown.
+ * An example card for the landing page and the README. Round, made-up
+ * numbers on purpose, and labelled "Example" where it is shown.
  */
 export function exampleSummary(today: string): Summary {
   const rows = Array.from({ length: 30 }, (_, i) => {

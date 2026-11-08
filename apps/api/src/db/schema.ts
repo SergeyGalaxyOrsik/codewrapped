@@ -19,6 +19,8 @@ export const users = pgTable("users", {
   image: text("image"),
   /** GitHub login at sign up, used for the first handle. */
   githubLogin: text("github_login"),
+  /** When the GitHub account was created. Young accounts are reviewed before they rank. */
+  githubCreatedAt: timestamp("github_created_at", { withTimezone: true }),
   ...timestamps,
 });
 
@@ -75,6 +77,12 @@ export const profiles = pgTable(
     /** IANA timezone of the last sync, so "last 30 days" ends on the user's today. */
     timeZone: text("time_zone").notNull().default("UTC"),
     visibility: jsonb("visibility").$type<Visibility>().notNull().default(DEFAULT_VISIBILITY),
+    /** Opt-in to public leaderboards. Off by default. */
+    leaderboard: boolean("leaderboard").notNull().default(false),
+    /** Optional X handle without the @, for tagging in the weekly top 10 post. */
+    xHandle: text("x_handle"),
+    /** Set by hand after review: ranks even with flagged days or a young GitHub account. */
+    leaderboardTrusted: boolean("leaderboard_trusted").notNull().default(false),
     ...timestamps,
   },
   (t) => [uniqueIndex("profiles_handle_unique").on(sql`lower(${t.handle})`)],
@@ -126,6 +134,8 @@ export const dailyStats = pgTable(
     day: date("day").notNull(),
     data: jsonb("data").$type<DailyAggregate>().notNull(),
     schemaVersion: integer("schema_version").notNull(),
+    /** Why the day failed a plausibility check, or null. Flagged days keep a user off the boards until reviewed. */
+    flag: text("flag"),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.userId, t.machineId, t.source, t.day] }), index("daily_stats_user_day").on(t.userId, t.day)],

@@ -20,6 +20,8 @@ export type CardOptions = {
   theme?: Theme;
   /** Public handle without the @, or null for a local card. */
   handle?: string | null;
+  /** Percentile among codewrapped users this month, from the public profile. */
+  standing?: { percentile: number; period: "month" } | null;
 };
 
 export type CardStat = { value: string; label: string };
@@ -28,6 +30,8 @@ export type CardStat = { value: string; label: string };
 export type CardData = {
   theme: Theme;
   handle: string | null;
+  /** "Top 4% this month", shown next to the handle. */
+  standing: string | null;
   /** "last 30 days". Carried by the ribbon. */
   period: string;
   /** "Oct 10 to Nov 8, 2026". */
@@ -115,6 +119,7 @@ export function cardData(s: CardSummary, opts: CardOptions = {}): CardData {
   return {
     theme: opts.theme ?? "light",
     handle,
+    standing: handle && opts.standing ? `Top ${opts.standing.percentile}% this month` : null,
     period: periodLabel(s),
     range: formatRange(s.range.start, s.range.end),
     hero: { value: formatCompact(t.tokens.headline), unit: "tokens" },

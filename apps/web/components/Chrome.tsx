@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { markDataUri } from "@codewrapped/brand";
+import { markDataUri, site } from "@codewrapped/brand";
 
 export function Wordmark({ size = 20 }: { size?: number }) {
   return (
@@ -16,22 +16,51 @@ export function Wordmark({ size = 20 }: { size?: number }) {
 
 export function Header({ right }: { right?: ReactNode }) {
   return (
-    <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-5 sm:px-6">
+    <header className="mx-auto flex w-full max-w-5xl items-center justify-between gap-3 px-4 py-5 sm:px-6">
       <Wordmark />
-      <nav className="flex items-center gap-2 text-[14px]">{right}</nav>
+      <nav className="flex items-center gap-1 text-[14px]">
+        <Link href="/leaderboard" className="rounded-[8px] px-3 py-2 text-muted hover:text-fg">
+          Leaderboard
+        </Link>
+        {right}
+      </nav>
     </header>
   );
 }
 
+/** The author's X handle, from NEXT_PUBLIC_AUTHOR_X_HANDLE, without the @. */
+const AUTHOR_X = process.env.NEXT_PUBLIC_AUTHOR_X_HANDLE?.replace(/^@/, "") || null;
+
 export function Footer() {
   return (
-    <footer className="mx-auto mt-24 flex w-full max-w-5xl flex-col gap-2 border-t border-border px-4 py-8 text-[14px] text-muted sm:flex-row sm:items-center sm:justify-between sm:px-6">
-      <span>
-        <code className="font-mono text-fg">npx codewrapped</code> runs on your computer. Sync is optional.
-      </span>
-      <Link href="/settings" className="rounded-[8px] hover:text-fg">
-        Settings
-      </Link>
+    <footer className="mx-auto mt-24 flex w-full max-w-5xl flex-col gap-6 border-t border-border px-4 py-10 text-[14px] text-muted sm:px-6">
+      <p className="max-w-xl text-[16px] leading-relaxed text-fg">
+        I build one small tool a week and share how it goes. codewrapped is week 1.
+        {AUTHOR_X && (
+          <>
+            {" "}
+            Follow{" "}
+            <a href={`https://x.com/${AUTHOR_X}`} className="rounded-[8px] underline underline-offset-4">
+              @{AUTHOR_X}
+            </a>{" "}
+            for the next one.
+          </>
+        )}
+      </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <nav className="flex gap-4">
+          <Link href="/leaderboard" className="rounded-[8px] hover:text-fg">
+            Leaderboard
+          </Link>
+          <Link href="/settings" className="rounded-[8px] hover:text-fg">
+            Settings
+          </Link>
+          <a href={site.repo} className="rounded-[8px] hover:text-fg">
+            Source
+          </a>
+        </nav>
+        <span>Not affiliated with Anthropic or OpenAI.</span>
+      </div>
     </footer>
   );
 }

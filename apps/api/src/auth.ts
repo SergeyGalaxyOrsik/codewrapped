@@ -17,13 +17,17 @@ export function createAuth(db: Db, config: Config) {
     user: {
       additionalFields: {
         githubLogin: { type: "string", required: false, input: false },
+        githubCreatedAt: { type: "date", required: false, input: false },
       },
     },
     socialProviders: {
       github: {
         clientId: config.github.clientId,
         clientSecret: config.github.clientSecret,
-        mapProfileToUser: (profile) => ({ githubLogin: profile.login }),
+        mapProfileToUser: (profile) => ({
+          githubLogin: profile.login,
+          githubCreatedAt: profile.created_at ? new Date(profile.created_at) : undefined,
+        }),
       },
     },
     advanced: {

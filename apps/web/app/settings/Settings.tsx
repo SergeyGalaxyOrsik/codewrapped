@@ -10,7 +10,16 @@ import { apiCall, signOut } from "@/lib/api";
 type Me = {
   name: string;
   email: string;
-  profile: { handle: string; canChangeHandle: boolean; displayName: string | null; avatarUrl: string | null; timeZone: string; visibility: Visibility };
+  profile: {
+    handle: string;
+    canChangeHandle: boolean;
+    displayName: string | null;
+    avatarUrl: string | null;
+    timeZone: string;
+    visibility: Visibility;
+    leaderboard: boolean;
+    xHandle: string | null;
+  };
   synced: { days: number; firstDay: string | null; lastDay: string | null };
 };
 type Token = { id: string; machineLabel: string; createdAt: string; lastUsedAt: string | null };
@@ -79,6 +88,7 @@ export function Settings() {
   const [notice, setNotice] = useState<string | null>(null);
   const [handle, setHandle] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [xHandle, setXHandle] = useState("");
 
   const load = useCallback(async () => {
     const res = await apiCall<Me>("GET", "/me");
@@ -90,6 +100,7 @@ export function Settings() {
     setMe(res.data);
     setHandle(res.data.profile.handle);
     setDisplayName(res.data.profile.displayName ?? "");
+    setXHandle(res.data.profile.xHandle ?? "");
     const t = await apiCall<{ tokens: Token[] }>("GET", "/me/tokens");
     if (t.ok) setTokens(t.data.tokens);
   }, []);
@@ -213,6 +224,57 @@ export function Settings() {
             </li>
           ))}
         </ul>
+      </Block>
+
+      <Block title="Leaderboard">
+        <div className="flex items-center justify-between gap-4">
+          <label htmlFor="lb" className="flex flex-col">
+            <span className="text-[15px]">Show me on the leaderboard</span>
+            <span className="text-[13px] text-muted">Weekly and monthly boards by hours, streak and tokens. Never by cost. Off until you turn it on.</span>
+          </label>
+          <input
+            id="lb"
+            type="checkbox"
+            role="switch"
+            checked={me.profile.leaderboard}
+            onChange={async (e) => {
+              const enabled = e.target.checked;
+              setMe({ ...me, profile: { ...me.profile, leaderboard: enabled } });
+              const res = await apiCall("PATCH", "/me/leaderboard", { enabled });
+              setNotice(res.ok ? (enabled ? "You are on the leaderboard from the next refresh." : "You are off the leaderboard.") : res.error.message);
+            }}
+            className="size-5 accent-[var(--cw-fg)]"
+          />
+        </div>
+        <form
+          className="flex flex-col gap-2"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            const res = await apiCall("PATCH", "/me/leaderboard", { xHandle: xHandle.trim() || null });
+            setNotice(res.ok ? "Saved your X handle." : res.error.message);
+          }}
+        >
+          <label htmlFor="x" className="text-[14px] font-medium">
+            X handle
+          </label>
+          <div className="flex gap-2">
+            <input
+              id="x"
+              value={xHandle}
+              placeholder="@you"
+              maxLength={16}
+              onChange={(e) => setXHandle(e.target.value)}
+              className="w-full rounded-[8px] border border-border bg-bg px-3 py-2 font-mono text-[14px]"
+            />
+            <button type="submit" className={buttonSecondary}>
+              Save handle
+            </button>
+          </div>
+          <p className="text-[13px] text-muted">Optional. Used to tag you in the weekly top 10 post on X.</p>
+        </form>
+        <p className="text-[13px] text-muted">
+          Numbers are self-reported from local logs. New GitHub accounts and unusual days are reviewed before they rank.
+        </p>
       </Block>
 
       <Block title="Connected computers">

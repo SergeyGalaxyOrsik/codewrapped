@@ -11,7 +11,8 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json",
-    "drafts": "tsx scripts/drafts.ts"
+    "drafts": "tsx scripts/drafts.ts",
+    "readme-card": "tsx scripts/readme-card.ts"
   },
   "dependencies": {
     "@codewrapped/brand": "workspace:*",

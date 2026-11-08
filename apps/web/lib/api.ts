@@ -11,6 +11,31 @@ export const PERIOD_LABELS: Record<Period, string> = {
   all: "All time",
 };
 
+export type BoardPeriod = "week" | "month";
+export type BoardMetric = "hours" | "streak" | "tokens";
+export type BoardEntry = { rank: number; handle: string; displayName: string | null; avatarUrl: string | null; xHandle: string | null; value: number };
+export type Board = {
+  period: BoardPeriod;
+  metric: BoardMetric;
+  range: { start: string; end: string };
+  label: string;
+  participants: number;
+  entries: BoardEntry[];
+};
+
+export const BOARD_PERIOD_LABELS: Record<BoardPeriod, string> = { week: "This week", month: "This month" };
+export const BOARD_METRIC_LABELS: Record<BoardMetric, string> = { hours: "Hours", streak: "Streak", tokens: "Tokens" };
+
+/** Server-side fetch of a leaderboard, cached for 60 seconds. Null when the API is down. */
+export async function getBoard(period: BoardPeriod, metric: BoardMetric): Promise<Board | null> {
+  try {
+    const res = await fetch(`${API_URL}/leaderboard?period=${period}&metric=${metric}`, { next: { revalidate: 60 } });
+    return res.ok ? ((await res.json()) as Board) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Server-side fetch of a public profile, cached for 60 seconds. Null when the handle does not exist. */
 export async function getProfile(handle: string, period: Period): Promise<PublicProfile | null> {
   const res = await fetch(`${API_URL}/u/${encodeURIComponent(handle)}?period=${period}`, { next: { revalidate: 60 } });
