@@ -11,6 +11,8 @@ export type Config = {
   syncConsentAt?: string;
   /** Last local day uploaded, per API. */
   lastSyncedDay?: Record<string, string>;
+  /** Account folders with logs found on earlier runs. Read again by later runs and sync. Never uploaded. */
+  logFolders?: { claude?: string[]; codex?: string[] };
 };
 
 export type AuthFile = { token: string; handle: string | null; apiUrl: string; createdAt: string };

@@ -26,10 +26,12 @@ Run the command and you get `codewrapped.png` and a summary in the terminal:
 
 ## Private by default
 
-- **What it reads:** session logs in `~/.claude` and `~/.codex`, and from `.git/config` only the repository name from the remote URL, never credentials.
+- **What it reads:** session logs in `~/.claude`, `~/.codex` and any other Claude Code or Codex folders it finds (see [SECURITY.md](SECURITY.md) for exactly where it looks), and from `.git/config` only the repository name from the remote URL, never credentials.
 - **What it counts:** time, tokens, tool calls, file and repository names.
 - **What it never keeps:** your prompts, your code, full paths.
 - **Without an account:** it makes zero network requests.
+
+Several Claude Code accounts, such as `~/.claude` and `~/.claude-work`, are found and added up automatically. Folders elsewhere: pass `--claude-dir` or `--codex-dir`. Several computers: run `npx codewrapped sync` on each and the totals add up on your profile.
 
 ## Keep your history
 

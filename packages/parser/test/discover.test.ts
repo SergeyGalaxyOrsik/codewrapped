@@ -1,13 +1,14 @@
-import { cp, mkdtemp, mkdir, symlink } from "node:fs/promises";
+import { cp, mkdtemp, mkdir, realpath, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { findLocalLogs, findLogFolders, parseFiles } from "../src/index";
+import { describe, expect, it, vi } from "vitest";
+import { findLocalLogs, findLogFolders, folderVarsFromShell, parseFiles } from "../src/index";
 
 const fixtures = join(import.meta.dirname, "../fixtures");
 
 async function tempHome() {
-  return mkdtemp(join(tmpdir(), "codewrapped-"));
+  // Real path, since macOS puts tmpdir behind a /var -> /private/var symlink.
+  return realpath(await mkdtemp(join(tmpdir(), "codewrapped-")));
 }
 
 describe("findLogFolders", () => {
@@ -59,5 +60,108 @@ describe("overlapping folders", () => {
     const parse = (l: typeof once) =>
       parseFiles({ claudeFiles: l.claudeFiles, codexFiles: l.codexFiles, timeZone: "Europe/Berlin" });
     expect((await parse(many)).aggregates).toEqual((await parse(once)).aggregates);
+  });
+});
+
+describe("auto-discovery", () => {
+  const claudeLine = '{"type":"user","sessionId":"s1","uuid":"u1","timestamp":"2026-01-14T10:00:00.000Z"}\n';
+
+  async function claudeHome(root: string) {
+    await mkdir(join(root, "projects", "-home-dev-shop"), { recursive: true });
+    await writeFile(join(root, "projects", "-home-dev-shop", "s1.jsonl"), claudeLine);
+  }
+  async function codexHome(root: string) {
+    await mkdir(join(root, "sessions", "2026", "01", "14"), { recursive: true });
+    await writeFile(join(root, "sessions", "2026", "01", "14", "rollout-2026-01-14T10-00-00-t1.jsonl"), "{}\n");
+  }
+
+  it("finds extra account folders in ~ and ~/.config by their content", async () => {
+    const home = await tempHome();
+    await claudeHome(join(home, ".claude"));
+    await claudeHome(join(home, ".claude-personal"));
+    await claudeHome(join(home, ".config", "claude-work"));
+    await codexHome(join(home, ".codex-work"));
+    // Names match, content does not: skipped.
+    await mkdir(join(home, ".claude-notes", "projects", "x"), { recursive: true });
+    await writeFile(join(home, ".claude-notes", "projects", "x", "a.jsonl"), '{"hello":"world"}\n');
+    await mkdir(join(home, "codex-stuff", "sessions"), { recursive: true });
+    await writeFile(join(home, "codex-stuff", "sessions", "rollout-x.jsonl"), "{}\n");
+    // Content matches, name does not: not scanned.
+    await claudeHome(join(home, "agents-backup"));
+
+    const f = await findLogFolders({}, home);
+    const short = (agent: string) => f.roots.filter((r) => r.agent === agent).map((r) => [r.root.slice(r.root.lastIndexOf("/") + 1), r.via]);
+    expect(short("claude")).toEqual([
+      [".claude", "default"],
+      [".claude-personal", "scan"],
+      ["claude-work", "scan"],
+    ]);
+    expect(short("codex")).toEqual([[".codex-work", "scan"]]);
+    expect(f.checked.some((p) => p.includes("claude-notes") || p.includes("codex-stuff"))).toBe(false);
+  });
+
+  it("reuses saved folders and lets flags replace everything", async () => {
+    const home = await tempHome();
+    await claudeHome(join(home, "work", "agent-a"));
+    await claudeHome(join(home, ".claude-personal"));
+    const saved = await findLogFolders({}, home, { saved: { claude: [join(home, "work", "agent-a")] } });
+    expect(saved.roots.map((r) => r.via)).toEqual(["saved", "scan"]);
+    const flagged = await findLogFolders({}, home, { claudeDirs: [join(home, "work", "agent-a")] });
+    expect(flagged.roots.map((r) => r.via)).toEqual(["flag"]);
+  });
+
+  it("does not count a folder twice when it is found several ways", async () => {
+    const home = await tempHome();
+    await claudeHome(join(home, ".claude-personal"));
+    await writeFile(join(home, ".zshrc"), "alias cp2='CLAUDE_CONFIG_DIR=~/.claude-personal claude'\n");
+    const f = await findLogFolders({ CLAUDE_CONFIG_DIR: join(home, ".claude-personal") }, home);
+    expect(f.roots.map((r) => r.via)).toEqual(["env"]);
+  });
+});
+
+describe("shell config files", () => {
+  const rc = [
+    "export ANTHROPIC_API_KEY=sk-ant-api03-SECRET-should-never-leak",
+    "export OPENAI_API_KEY='sk-proj-ALSO-SECRET'",
+    "export GITHUB_TOKEN=ghp_SECRET CLAUDE_CONFIG_DIR=$SECRET_DIR",
+    "alias claude-per='CLAUDE_CONFIG_DIR=~/work/claude-a claude'",
+    'export CODEX_HOME="$HOME/work/codex-b"',
+    "",
+  ].join("\n");
+
+  it("keeps only CLAUDE_CONFIG_DIR and CODEX_HOME paths", () => {
+    const found = folderVarsFromShell(rc, "/home/dev");
+    expect(found).toEqual({ claude: ["/home/dev/work/claude-a"], codex: ["/home/dev/work/codex-b"] });
+    expect(JSON.stringify(found)).not.toMatch(/SECRET|sk-|ghp_/);
+  });
+
+  it("reads fish syntax", () => {
+    expect(folderVarsFromShell("set -gx CLAUDE_CONFIG_DIR ~/c2\nset -x CODEX_HOME /opt/cx\n", "/h")).toEqual({ claude: ["/h/c2"], codex: ["/opt/cx"] });
+  });
+
+  it("uses folders from rc files, prints nothing and returns nothing but paths", async () => {
+    const home = await tempHome();
+    await mkdir(join(home, "work", "claude-a", "projects", "p"), { recursive: true });
+    await writeFile(join(home, "work", "claude-a", "projects", "p", "s.jsonl"), '{"type":"user","sessionId":"s"}\n');
+    await writeFile(join(home, ".zshrc"), rc);
+    await mkdir(join(home, ".config", "fish"), { recursive: true });
+    await writeFile(join(home, ".config", "fish", "config.fish"), "set -gx OPENAI_API_KEY sk-fish-SECRET\n");
+
+    const writes: string[] = [];
+    const spies = [
+      vi.spyOn(process.stdout, "write").mockImplementation((s) => (writes.push(String(s)), true)),
+      vi.spyOn(process.stderr, "write").mockImplementation((s) => (writes.push(String(s)), true)),
+      vi.spyOn(console, "log").mockImplementation((...a) => void writes.push(a.join(" "))),
+      vi.spyOn(console, "warn").mockImplementation((...a) => void writes.push(a.join(" "))),
+    ];
+    let f;
+    try {
+      f = await findLogFolders({}, home);
+    } finally {
+      for (const s of spies) s.mockRestore();
+    }
+    expect(writes).toEqual([]);
+    expect(f.roots.map((r) => [r.root.endsWith("/work/claude-a"), r.via])).toEqual([[true, "shell"]]);
+    expect(JSON.stringify(f)).not.toMatch(/SECRET|sk-|ghp_/);
   });
 });

@@ -50,12 +50,24 @@ const onTheCard: Array<{ title: string; items: Array<[string, string]> }> = [
   },
 ];
 
+const c = (s: string) => <code className="font-mono text-fg">{s}</code>;
+
 const privacy: Array<[string, ReactNode]> = [
+  [
+    "Where it looks",
+    <>
+      {c("~/.claude")}, {c("~/.codex")}, {c("CLAUDE_CONFIG_DIR")} and {c("CODEX_HOME")}, plus folders one level deep in {c("~")} and{" "}
+      {c("~/.config")} named {c(".claude*")}, {c(".codex*")}, {c("claude*")} or {c("codex*")} that hold logs. From your shell config files it reads
+      only those two variables.{" "}
+      <a href={`${site.repo}/blob/main/SECURITY.md`} className="rounded-[8px] text-fg underline decoration-border underline-offset-4 hover:decoration-fg">
+        Exactly what it scans
+      </a>
+    </>,
+  ],
   [
     "What it reads",
     <>
-      Session logs in <code className="font-mono text-fg">~/.claude</code> and <code className="font-mono text-fg">~/.codex</code>, and from{" "}
-      <code className="font-mono text-fg">.git/config</code> the repository name from the remote URL, never credentials.
+      Session logs in those folders, and from {c(".git/config")} the repository name from the remote URL, never credentials.
     </>,
   ],
   ["What it counts", "Time, tokens, tool calls, file and repository names."],
@@ -92,6 +104,18 @@ const faq: Array<[string, ReactNode]> = [
       spend. codewrapped is a look back you can share: wall-clock hours, parallel sessions, repositories and tools on one card, with history past
       the 30-day log cleanup if you sign in.
     </>,
+  ],
+  [
+    "I use two Claude accounts",
+    <>
+      Both are found and added up automatically when their folders are in your home directory, such as {c("~/.claude")} and{" "}
+      {c("~/.claude-work")}, or when {c("CLAUDE_CONFIG_DIR")} points to them in your shell config. Anywhere else, pass each one with{" "}
+      {c("--claude-dir")}. The first run lists every folder it found.
+    </>,
+  ],
+  [
+    "I work on several machines",
+    <>Sign in and run {c("npx codewrapped sync")} on each one. Every machine uploads its own daily totals, and they add up on your profile.</>,
   ],
   [
     "Why does my card show 23 days?",

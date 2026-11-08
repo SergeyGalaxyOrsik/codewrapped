@@ -8,7 +8,7 @@ npx codewrapped
 
 ![An example codewrapped card](https://raw.githubusercontent.com/SergeyGalaxyOrsik/codewrapped/main/docs/card-light.png)
 
-- **What it reads:** session logs in `~/.claude` and `~/.codex`, and from `.git/config` only the repository name from the remote URL, never credentials.
+- **What it reads:** session logs in `~/.claude`, `~/.codex` and any other Claude Code or Codex folders it finds (see [SECURITY.md](https://github.com/SergeyGalaxyOrsik/codewrapped/blob/main/SECURITY.md) for exactly where it looks), and from `.git/config` only the repository name from the remote URL, never credentials.
 - **What it never keeps:** your prompts, your code, full paths.
 - **Without an account:** it makes zero network requests.
 

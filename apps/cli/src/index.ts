@@ -4,6 +4,8 @@ import {
   LocalClock,
   parseFiles,
   systemTimeZone,
+  type Agent,
+  type LocalLogs,
   type ParseWarnings,
 } from "@codewrapped/parser";
 import { summarize, PRICING_CHECKED_ON } from "@codewrapped/stats";
@@ -13,9 +15,9 @@ import { openFile, shareUrl, writeCard } from "./card";
 import { login } from "./commands/login";
 import { logout } from "./commands/logout";
 import { sync } from "./commands/sync";
-import { loadAuth } from "./config";
+import { loadAuth, loadConfig, saveConfig, type Config } from "./config";
 import { formatSummary, SOURCE_NAMES } from "./format";
-import { dim, int, tildify } from "./ui";
+import { dim, int, pad, tildify } from "./ui";
 
 const out = (s = "") => process.stdout.write(`${s}\n`);
 const err = (s = "") => process.stderr.write(`${s}\n`);
@@ -41,10 +43,47 @@ type LocalData = Awaited<ReturnType<typeof parseFiles>> & {
   files: { claude: number; codex: number };
 };
 
+const AGENT_NAMES: Record<Agent, string> = { claude: "Claude Code", codex: "Codex" };
+const sessions = (n: number) => `${int(n)} ${n === 1 ? "session" : "sessions"}`;
+
+/**
+ * Lists the log folders on the first run and saves them; later runs mention
+ * only folders that are new. Folders given with --claude-dir or --codex-dir
+ * are not saved.
+ */
+async function reportFolders(opts: CliOptions, logs: LocalLogs, config: Config, say: (s?: string) => void): Promise<void> {
+  const agents = (["claude", "codex"] as const).filter(
+    (a) => (opts.source === "all" || opts.source === a) && (a === "claude" ? opts.claudeDirs : opts.codexDirs).length === 0,
+  );
+  const roots = logs.roots.filter((r) => agents.includes(r.agent));
+  if (agents.length === 0 || roots.length === 0) return;
+  const before = config.logFolders;
+  const fresh = before ? roots.filter((r) => !(before[r.agent] ?? []).includes(r.root)) : roots;
+  if (!before) {
+    const width = Math.max(...roots.map((r) => tildify(r.root).length)) + 3;
+    say(dim("Found logs in"));
+    for (const r of roots) say(dim(`  ${pad(tildify(r.root), width)}${AGENT_NAMES[r.agent]}, ${sessions(r.sessions)}`));
+  } else if (fresh.length > 0) {
+    const list = fresh.map((r) => `${tildify(r.root)} (${AGENT_NAMES[r.agent]}, ${sessions(r.sessions)})`).join(", ");
+    say(dim(`New log ${fresh.length === 1 ? "folder" : "folders"}: ${list}`));
+  }
+  if (!before || fresh.length > 0) {
+    const next = { ...before };
+    for (const a of agents) next[a] = [...new Set([...(before?.[a] ?? []), ...roots.filter((r) => r.agent === a).map((r) => r.root)])];
+    await saveConfig({ ...(await loadConfig()), logFolders: next });
+  }
+}
+
 /** Finds and parses local logs. Prints a friendly message and returns null when there are none. */
-async function readLocal(opts: CliOptions): Promise<LocalData | null> {
+async function readLocal(opts: CliOptions, say: (s?: string) => void): Promise<LocalData | null> {
   const timeZone = opts.timeZone ?? systemTimeZone();
-  const logs = await findLocalLogs(opts.source, { claudeDirs: opts.claudeDirs, codexDirs: opts.codexDirs });
+  const config = await loadConfig();
+  const logs = await findLocalLogs(opts.source, {
+    claudeDirs: opts.claudeDirs,
+    codexDirs: opts.codexDirs,
+    saved: config.logFolders,
+  });
+  await reportFolders(opts, logs, config, say);
   const fileCount = logs.claudeFiles.length + logs.codexFiles.length;
   if (fileCount === 0) {
     const which = opts.source === "all" ? "Claude Code or Codex" : SOURCE_NAMES[opts.source];
@@ -87,7 +126,7 @@ async function readLocal(opts: CliOptions): Promise<LocalData | null> {
 async function wrap(opts: CliOptions): Promise<number> {
   const log = opts.json ? err : out;
   log(dim("codewrapped -- reads logs on this computer. No network calls."));
-  const local = await readLocal(opts);
+  const local = await readLocal(opts, log);
   if (!local) return 1;
   const { aggregates, warnings, timeZone, today, counts, started } = local;
 
@@ -159,7 +198,7 @@ async function wrap(opts: CliOptions): Promise<number> {
 async function runSync(opts: CliOptions): Promise<number> {
   if (!opts.dryRun) out(dim("codewrapped sync -- uploads daily totals, never prompts, code or paths."));
   else err(dim("codewrapped sync --dry-run -- prints what would be uploaded. Nothing is sent."));
-  const local = await readLocal(opts);
+  const local = await readLocal(opts, opts.dryRun ? err : out);
   if (!local) return 1;
   return sync(
     {

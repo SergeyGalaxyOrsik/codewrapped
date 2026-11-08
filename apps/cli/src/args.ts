@@ -115,8 +115,8 @@ Flags
   --include-automated             Count claude -p, Agent SDK and codex exec runs in hours
   --json                          Print the summary as JSON
   --tz <zone>                     Timezone for days and hours (default: system)
-  --claude-dir <path>             Read Claude Code logs only from here (repeatable)
-  --codex-dir <path>              Read Codex logs only from here (repeatable)
+  --claude-dir <path>             Only these Claude Code folders, no auto-detection (repeatable)
+  --codex-dir <path>              Only these Codex folders, no auto-detection (repeatable)
   --theme light|dark              Card theme
   --story                         Card in story size, 1080x1920
   --out <path>                    Where to write the card
