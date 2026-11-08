@@ -234,6 +234,12 @@ exports[`fixture snapshot > produces the same daily aggregates > America/Los_Ang
         "codex:mystery_event": 1,
       },
     },
+    "cursor": {
+      "badLines": 0,
+      "files": 0,
+      "lines": 0,
+      "unknownEvents": {},
+    },
     "opencode": {
       "badLines": 0,
       "files": 0,
@@ -531,6 +537,12 @@ exports[`fixture snapshot > produces the same daily aggregates > Europe/Berlin 1
         "codex:mystery_event": 1,
       },
     },
+    "cursor": {
+      "badLines": 0,
+      "files": 0,
+      "lines": 0,
+      "unknownEvents": {},
+    },
     "opencode": {
       "badLines": 0,
       "files": 0,
@@ -786,6 +798,12 @@ exports[`fixture snapshot > produces the same daily aggregates > UTC 1`] = `
       "unknownEvents": {
         "codex:mystery_event": 1,
       },
+    },
+    "cursor": {
+      "badLines": 0,
+      "files": 0,
+      "lines": 0,
+      "unknownEvents": {},
     },
     "opencode": {
       "badLines": 0,

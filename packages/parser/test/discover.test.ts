@@ -46,8 +46,9 @@ describe("overlapping folders", () => {
     await cp(join(fixtures, "codex"), join(home, "cx1"), { recursive: true });
     await cp(join(fixtures, "codex"), join(home, "cx2"), { recursive: true });
 
-    const once = await findLocalLogs("all", { dirs: { claude: [join(home, "a")], codex: [join(home, "cx1")] } });
-    const many = await findLocalLogs("all", { dirs: { claude: [join(home, "a"), join(home, "b"), join(home, "link")], codex: [join(home, "cx1"), join(home, "cx2")] } });
+    // The temp home keeps this test away from real logs of the other harnesses.
+    const once = await findLocalLogs("all", { dirs: { claude: [join(home, "a")], codex: [join(home, "cx1")] } }, {}, home);
+    const many = await findLocalLogs("all", { dirs: { claude: [join(home, "a"), join(home, "b"), join(home, "link")], codex: [join(home, "cx1"), join(home, "cx2")] } }, {}, home);
     // The symlink resolves to a/, so only the copy in b/ adds files.
     expect(many.files.claude).toHaveLength(once.files.claude.length * 2);
 
@@ -125,12 +126,12 @@ describe("shell config files", () => {
 
   it("keeps only CLAUDE_CONFIG_DIR and CODEX_HOME paths", () => {
     const found = folderVarsFromShell(rc, "/home/dev");
-    expect(found).toEqual({ claude: ["/home/dev/work/claude-a"], codex: ["/home/dev/work/codex-b"], pi: [], opencode: [], zcode: [] });
+    expect(found).toEqual({ claude: ["/home/dev/work/claude-a"], codex: ["/home/dev/work/codex-b"], pi: [], opencode: [], zcode: [], cursor: [] });
     expect(JSON.stringify(found)).not.toMatch(/SECRET|sk-|ghp_/);
   });
 
   it("reads fish syntax", () => {
-    expect(folderVarsFromShell("set -gx CLAUDE_CONFIG_DIR ~/c2\nset -x CODEX_HOME /opt/cx\n", "/h")).toEqual({ claude: ["/h/c2"], codex: ["/opt/cx"], pi: [], opencode: [], zcode: [] });
+    expect(folderVarsFromShell("set -gx CLAUDE_CONFIG_DIR ~/c2\nset -x CODEX_HOME /opt/cx\n", "/h")).toEqual({ claude: ["/h/c2"], codex: ["/opt/cx"], pi: [], opencode: [], zcode: [], cursor: [] });
   });
 
   it("uses folders from rc files, prints nothing and returns nothing but paths", async () => {

@@ -77,6 +77,17 @@ body:
       options:
         - label: I compared the numbers with ZCode's /usage.
         - label: I attached sanitized message rows.
+  - type: checkboxes
+    id: cursor
+    attributes:
+      label: Cursor users
+      description: |
+        Cursor support reads the editor's agent chats and is checked against one person's files so far.
+        Compare `npx codewrapped --source cursor --period 7d` with what you remember of the week (Cursor keeps token counts only for some older chats).
+        Field names help, never values: `sqlite3 "<Cursor folder>/User/globalStorage/state.vscdb" "select json_group_array(distinct j.key) from (select value as v from cursorDiskKV where key >= 'bubbleId:' and key < 'bubbleId;' limit 200), json_each(v) j"`.
+      options:
+        - label: I compared the numbers with my own sense of the week.
+        - label: I attached the field names.
   - type: textarea
     id: notes
     attributes:

@@ -5,11 +5,12 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 
 export type Row = Record<string, unknown>;
+export type SqlValue = string | number | null;
 
-/** A read-only view of a copied database. */
+/** A read-only view of a database: a copy, or the file itself for openInPlace. */
 export type SqliteSnapshot = {
-  /** Runs one SELECT and returns its rows. */
-  all(sql: string): Row[];
+  /** Runs one SELECT with ? parameters and returns its rows. */
+  all(sql: string, ...params: SqlValue[]): Row[];
   /** Which engine read it: node:sqlite, or sql.js where node:sqlite is missing. */
   engine: "node:sqlite" | "sql.js";
   close(): Promise<void>;
@@ -44,7 +45,7 @@ async function copyDatabase(file: string): Promise<{ dir: string; copy: string }
 }
 
 type NodeSqlite = { DatabaseSync: new (path: string, opts?: { readOnly?: boolean }) => NodeDb };
-type NodeDb = { prepare(sql: string): { all(): Row[] }; close(): void };
+type NodeDb = { prepare(sql: string): { all(...params: SqlValue[]): Row[] }; close(): void };
 
 /** node:sqlite without an ExperimentalWarning on stderr, or null where this Node does not have it unflagged. */
 async function loadNodeSqlite(): Promise<NodeSqlite | null> {
@@ -138,7 +139,7 @@ export async function openSnapshot(file: string): Promise<SqliteSnapshot> {
       const db = new native.DatabaseSync(copy, { readOnly: true });
       return {
         engine: "node:sqlite",
-        all: (sql) => db.prepare(sql).all(),
+        all: (sql, ...params) => db.prepare(sql).all(...params),
         close: async () => {
           db.close();
           await cleanup();
@@ -152,8 +153,8 @@ export async function openSnapshot(file: string): Promise<SqliteSnapshot> {
     const db = new SQL.Database(wal ? applyWal(image, wal) : image);
     return {
       engine: "sql.js",
-      all: (sql) => {
-        const [res] = db.exec(sql);
+      all: (sql, ...params) => {
+        const [res] = db.exec(sql, params);
         if (!res) return [];
         return res.values.map((v) => Object.fromEntries(res.columns.map((c, i) => [c, v[i]])));
       },
@@ -166,4 +167,28 @@ export async function openSnapshot(file: string): Promise<SqliteSnapshot> {
     await cleanup();
     throw e;
   }
+}
+
+/** Above this, a database is not copied for sql.js, which holds the whole file in memory. */
+const SQLJS_MAX_BYTES = 512 * 1024 * 1024;
+
+/**
+ * Opens a database read-only where it is, without a copy, for files too big
+ * to copy: Cursor's state.vscdb runs to gigabytes. In WAL mode a reader
+ * never blocks the program that writes the file. Needs node:sqlite; without
+ * it a small file is copied and read with sql.js, a big one is refused.
+ */
+export async function openInPlace(file: string): Promise<SqliteSnapshot> {
+  const native = process.env.CODEWRAPPED_SQLITE === "sql.js" ? null : await loadNodeSqlite();
+  if (!native) {
+    const size = (await stat(file)).size;
+    if (size > SQLJS_MAX_BYTES) throw new Error(`a ${(size / 1e9).toFixed(1)} GB database needs Node 22.13 or newer`);
+    return openSnapshot(file);
+  }
+  const db = new native.DatabaseSync(file, { readOnly: true });
+  return {
+    engine: "node:sqlite",
+    all: (sql, ...params) => db.prepare(sql).all(...params),
+    close: async () => db.close(),
+  };
 }

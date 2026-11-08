@@ -11,10 +11,11 @@ export type { Adapter, Candidate, DiscoverContext, Emit, FolderOrigin, HarnessEv
 export { ADAPTER, ADAPTERS } from "./adapters";
 export { looksLikeClaudeHome } from "./adapters/claude";
 export { looksLikeCodexHome, patchFiles } from "./adapters/codex";
+export { cursorAppDirs, cursorToolCategory, looksLikeCursorHome } from "./adapters/cursor";
 export { looksLikeOpencodeHome } from "./adapters/opencode";
 export { looksLikePiHome } from "./adapters/pi";
 export { looksLikeZcodeHome } from "./adapters/zcode";
-export { applyWal, openSnapshot, type SqliteSnapshot } from "./sqlite";
+export { applyWal, openInPlace, openSnapshot, type SqliteSnapshot } from "./sqlite";
 export { Aggregator } from "./aggregate";
 export {
   findLogFolders,
