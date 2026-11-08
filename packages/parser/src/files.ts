@@ -9,6 +9,14 @@ export async function isDir(p: string): Promise<boolean> {
   }
 }
 
+export async function isFile(p: string): Promise<boolean> {
+  try {
+    return (await stat(p)).isFile();
+  } catch {
+    return false;
+  }
+}
+
 /** Names of folders (and symlinks) in dir, or [] when it cannot be read. */
 export async function dirNames(dir: string): Promise<string[]> {
   try {

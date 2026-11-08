@@ -103,8 +103,8 @@ export function parseCli(argv: string[]): CliOptions {
   };
 }
 
-/** Pads a flag to the help column. */
-const pad = (s: string) => s.padEnd(32);
+/** Pads a flag to the help column. A flag too long for it gets its description on the next line. */
+const pad = (s: string) => (s.length < 32 ? s.padEnd(32) : `${s}\n${" ".repeat(34)}`);
 
 export const HELP = `codewrapped -- a Wrapped for your coding agents
 

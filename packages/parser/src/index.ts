@@ -13,6 +13,7 @@ export { looksLikeClaudeHome } from "./adapters/claude";
 export { looksLikeCodexHome, patchFiles } from "./adapters/codex";
 export { looksLikeOpencodeHome } from "./adapters/opencode";
 export { looksLikePiHome } from "./adapters/pi";
+export { looksLikeZcodeHome } from "./adapters/zcode";
 export { applyWal, openSnapshot, type SqliteSnapshot } from "./sqlite";
 export { Aggregator } from "./aggregate";
 export {

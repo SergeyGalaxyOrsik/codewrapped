@@ -177,7 +177,7 @@ async function wrap(opts: CliOptions): Promise<number> {
   if (w) out(dim(w));
   const beta = SOURCES.filter((s) => BETA_SOURCES.has(s) && summary.bySource[s].tokens + summary.bySource[s].activeMinutes > 0);
   if (beta.length > 0) {
-    const names = beta.map((s) => SOURCE_NAMES[s]).join(" and ");
+    const names = listText(beta.map((s) => SOURCE_NAMES[s]));
     out(dim(`${names} support is in beta. If a number looks wrong: ${site.repo}/issues/new?template=harness.yml`));
   }
   if (summary.truncated) {

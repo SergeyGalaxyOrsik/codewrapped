@@ -61,7 +61,7 @@ export type FolderOrigin = "flag" | "env" | "default" | "saved" | "shell" | "sca
 export type Candidate = {
   /** The account folder, e.g. ~/.claude-work. */
   root: string;
-  /** The folders under it that hold logs. */
+  /** The folders under it that hold logs, or a database file when the harness lets the user name one. */
   dirs: string[];
   via: FolderOrigin;
   /** A guess: used only when looksLike() agrees. */
@@ -86,6 +86,8 @@ export type Adapter = {
   shellVars: readonly string[];
   /** Folders under an account folder that hold logs. A flag pointing at a folder without them uses the folder itself. */
   subdirs: readonly string[];
+  /** The harness keeps one database file at a path the user can choose, so a log "folder" may be that file. */
+  dbFile?: boolean;
   /** Candidate folders, most specific first: env, defaults, saved, shell, scan. */
   discover(ctx: DiscoverContext): Candidate[] | Promise<Candidate[]>;
   /** True when a guessed folder really holds this harness's logs. Checks a few files only. */
