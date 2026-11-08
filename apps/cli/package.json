@@ -1,10 +1,12 @@
 {
   "name": "codewrapped",
   "version": "0.1.1",
-  "description": "A Wrapped for coding agents. Reads local Claude Code and Codex logs and shows your stats.",
+  "description": "A Wrapped for coding agents. Reads local Claude Code, Codex, Pi and opencode logs and shows your stats.",
   "keywords": [
     "claude-code",
     "codex",
+    "pi",
+    "opencode",
     "wrapped",
     "stats",
     "cli",
@@ -47,6 +49,7 @@
     "@codewrapped/parser": "workspace:*",
     "@codewrapped/stats": "workspace:*",
     "@resvg/resvg-wasm": "2.6.2",
-    "satori": "0.63.2"
+    "satori": "0.63.2",
+    "sql.js": "^1.15.2"
   }
 }

@@ -2,11 +2,13 @@ import type { Source } from "@codewrapped/stats";
 import type { Adapter } from "../adapter";
 import { claude } from "./claude";
 import { codex } from "./codex";
+import { opencode } from "./opencode";
+import { pi } from "./pi";
 
 /**
  * Every shipped adapter, in the order their rows are produced. An adapter is
  * added here only after it was checked against real logs of its harness.
  */
-export const ADAPTERS: readonly Adapter[] = [claude, codex];
+export const ADAPTERS: readonly Adapter[] = [claude, codex, pi, opencode];
 
-export const ADAPTER: Record<Source, Adapter> = { claude, codex };
+export const ADAPTER: Record<Source, Adapter> = { claude, codex, pi, opencode };

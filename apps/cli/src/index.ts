@@ -7,7 +7,8 @@ import {
   type LocalLogs,
   type ParseWarnings,
 } from "@codewrapped/parser";
-import { summarize, PRICING_CHECKED_ON, SOURCE_NAMES, SOURCES, type Source } from "@codewrapped/stats";
+import { BETA_SOURCES, summarize, PRICING_CHECKED_ON, SOURCE_NAMES, SOURCES, sourceLabel, type Source } from "@codewrapped/stats";
+import { site } from "@codewrapped/brand";
 import pkg from "../package.json";
 import { HELP, parseCli, UsageError, type CliOptions } from "./args";
 import { openFile, shareUrl, writeCard } from "./card";
@@ -43,6 +44,9 @@ type LocalData = Awaited<ReturnType<typeof parseFiles>> & {
   files: Record<Source, number>;
 };
 
+/** "a, b and c". */
+const listText = (items: string[]) => items.join(", ").replace(/, ([^,]*)$/, " and $1");
+
 /** "Claude Code or Codex", for messages about every harness. */
 const ANY_HARNESS = SOURCES.map((s) => SOURCE_NAMES[s]).join(", ").replace(/, ([^,]*)$/, " or $1");
 const DIR_FLAGS = SOURCES.map((s) => `--${s}-dir`).join(" or ");
@@ -62,9 +66,9 @@ async function reportFolders(opts: CliOptions, logs: LocalLogs, config: Config, 
   if (!before) {
     const width = Math.max(...roots.map((r) => tildify(r.root).length)) + 3;
     say(dim("Found logs in"));
-    for (const r of roots) say(dim(`  ${pad(tildify(r.root), width)}${SOURCE_NAMES[r.agent]}, ${sessions(r.sessions)}`));
+    for (const r of roots) say(dim(`  ${pad(tildify(r.root), width)}${sourceLabel(r.agent)}, ${sessions(r.sessions)}`));
   } else if (fresh.length > 0) {
-    const list = fresh.map((r) => `${tildify(r.root)} (${SOURCE_NAMES[r.agent]}, ${sessions(r.sessions)})`).join(", ");
+    const list = fresh.map((r) => `${tildify(r.root)} (${sourceLabel(r.agent)}, ${sessions(r.sessions)})`).join(", ");
     say(dim(`New log ${fresh.length === 1 ? "folder" : "folders"}: ${list}`));
   }
   if (!before || fresh.length > 0) {
@@ -95,8 +99,8 @@ async function readLocal(opts: CliOptions, say: (s?: string) => void): Promise<L
     return null;
   }
 
-  const counts = SOURCES.filter((s) => logs.files[s].length > 0).map((s) => `${int(logs.files[s].length)} ${SOURCE_NAMES[s]}`);
-  if (process.stderr.isTTY) process.stderr.write(dim(`Reading ${counts.join(" and ")} logs...`));
+  const counts = SOURCES.filter((s) => logs.files[s].length > 0).map((s) => `${int(logs.files[s].length)} ${sourceLabel(s)}`);
+  if (process.stderr.isTTY) process.stderr.write(dim(`Reading ${listText(counts)} logs...`));
   const started = Date.now();
   const parsed = await parseFiles({
     files: logs.files,
@@ -168,9 +172,14 @@ async function wrap(opts: CliOptions): Promise<number> {
   out(dim("Attach the image to the post."));
   out();
   const seconds = ((Date.now() - started) / 1000).toFixed(1);
-  out(dim(`Read ${counts.join(" and ")} log files in ${seconds}s. Times in ${timeZone}.`));
+  out(dim(`Read ${listText(counts)} log files in ${seconds}s. Times in ${timeZone}.`));
   const w = warningLine(warnings);
   if (w) out(dim(w));
+  const beta = SOURCES.filter((s) => BETA_SOURCES.has(s) && summary.bySource[s].tokens + summary.bySource[s].activeMinutes > 0);
+  if (beta.length > 0) {
+    const names = beta.map((s) => SOURCE_NAMES[s]).join(" and ");
+    out(dim(`${names} support is in beta. If a number looks wrong: ${site.repo}/issues/new?template=harness.yml`));
+  }
   if (summary.truncated) {
     out();
     out(`Your logs start on ${summary.firstDataDay}, so this covers ${summary.range.days} days.`);

@@ -11,6 +11,9 @@ export type { Adapter, Candidate, DiscoverContext, Emit, FolderOrigin, HarnessEv
 export { ADAPTER, ADAPTERS } from "./adapters";
 export { looksLikeClaudeHome } from "./adapters/claude";
 export { looksLikeCodexHome, patchFiles } from "./adapters/codex";
+export { looksLikeOpencodeHome } from "./adapters/opencode";
+export { looksLikePiHome } from "./adapters/pi";
+export { applyWal, openSnapshot, type SqliteSnapshot } from "./sqlite";
 export { Aggregator } from "./aggregate";
 export {
   findLogFolders,
@@ -72,7 +75,7 @@ export async function findLocalLogs(
   const roots = await Promise.all(
     folders.roots.flatMap((r) => {
       const adapter = included.find((a) => a.id === r.agent);
-      return adapter ? [adapter.listFiles(r.dirs).then((files) => ({ ...r, sessions: adapter.countSessions(r.dirs, files) }))] : [];
+      return adapter ? [adapter.listFiles(r.dirs).then(async (files) => ({ ...r, sessions: await adapter.countSessions(r.dirs, files) }))] : [];
     }),
   );
   const files = Object.fromEntries(

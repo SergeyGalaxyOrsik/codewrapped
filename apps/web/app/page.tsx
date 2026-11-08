@@ -130,8 +130,9 @@ const faq: Array<[string, ReactNode]> = [
   [
     "Which coding agents does it read?",
     <>
-      {SUPPORTED_HARNESSES}: Claude Code in the terminal and in VS Code, Codex from the CLI and the desktop app. Each agent is a small adapter, added
-      once it is checked against real logs. To ask for yours,{" "}
+      {SUPPORTED_HARNESSES}: Claude Code in the terminal and in VS Code, Codex from the CLI and the desktop app, Pi, and opencode. Pi and
+      opencode are in beta until more people have checked their numbers. Each agent is a small adapter, added once it is checked against real
+      logs. To ask for yours or report a wrong number,{" "}
       <a
         href={`${site.repo}/issues/new?template=harness.yml`}
         className="text-fg underline decoration-border underline-offset-4 hover:decoration-fg"

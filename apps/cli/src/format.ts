@@ -1,4 +1,4 @@
-import { describeAutomated, formatDuration, harnessSplit, WEEKDAYS, type Summary } from "@codewrapped/stats";
+import { describeAutomated, formatDuration, formatShare, harnessSplit, sourceLabel, WEEKDAYS, type Summary } from "@codewrapped/stats";
 import { bold, compact, dim, hours, int, pad, padStart, ribbon, shortName, usd } from "./ui";
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
@@ -70,7 +70,8 @@ export function formatSummary(s: Summary): string {
 
   const split = s.source === "all" ? harnessSplit(s.bySource, "activeMinutes") : [];
   if (split.length > 1) {
-    lines.push(`  ${dim("Agents")}  ${split.map((h) => `${h.name} ${pct(h.share)}`).join(", ")} of active time`);
+    const name = (h: (typeof split)[number]) => (h.source === "other" ? h.name : sourceLabel(h.source));
+    lines.push(`  ${dim("Agents")}  ${split.map((h) => `${name(h)} ${formatShare(h.share)}`).join(", ")} of active time`);
   }
   const models = s.models.filter((m) => m.share >= 0.01).slice(0, 4);
   if (models.length > 0) {

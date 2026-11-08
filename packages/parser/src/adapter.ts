@@ -87,13 +87,13 @@ export type Adapter = {
   /** Folders under an account folder that hold logs. A flag pointing at a folder without them uses the folder itself. */
   subdirs: readonly string[];
   /** Candidate folders, most specific first: env, defaults, saved, shell, scan. */
-  discover(ctx: DiscoverContext): Candidate[];
+  discover(ctx: DiscoverContext): Candidate[] | Promise<Candidate[]>;
   /** True when a guessed folder really holds this harness's logs. Checks a few files only. */
   looksLike(root: string): Promise<boolean>;
   /** Log files under the given folders, as sorted real paths, each once. */
   listFiles(dirs: readonly string[]): Promise<string[]>;
   /** Main sessions among the files of one account folder, for the "Found logs in" line. */
-  countSessions(dirs: readonly string[], files: readonly string[]): number;
+  countSessions(dirs: readonly string[], files: readonly string[]): number | Promise<number>;
   /** Reads the files and emits events. Unknown or broken input goes into warnings, never throws. */
   parse(files: readonly string[], emit: Emit, warnings: ParseWarnings): Promise<void>;
 };

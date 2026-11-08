@@ -8,17 +8,17 @@ export type ToolCategory = (typeof TOOL_CATEGORIES)[number];
 
 /** Lowercased raw names per category, across harnesses. MCP tools go by their mcp__ prefix. */
 const NAMES: Record<Exclude<ToolCategory, "mcp" | "other">, string[]> = {
-  // Claude Code: Edit, MultiEdit, Write, NotebookEdit. Codex: apply_patch.
-  edit: ["edit", "multiedit", "write", "notebookedit", "apply_patch"],
-  // Claude Code: Read, LS, NotebookRead. Codex: view_image.
-  read: ["read", "ls", "notebookread", "view_image"],
-  // Claude Code: Grep, Glob. Codex: find.
+  // Claude Code: Edit, MultiEdit, Write, NotebookEdit. Codex: apply_patch. Pi: edit, write. opencode: also patch.
+  edit: ["edit", "multiedit", "write", "notebookedit", "apply_patch", "patch"],
+  // Claude Code: Read, LS, NotebookRead. Codex: view_image. Pi: read, ls. opencode: read, list.
+  read: ["read", "ls", "notebookread", "view_image", "list"],
+  // Claude Code: Grep, Glob. Codex: find. Pi: grep, find. opencode: grep, glob.
   search: ["grep", "glob", "find"],
   // Claude Code: Bash, BashOutput, KillShell. Codex: shell, exec_command, write_stdin, local_shell.
   shell: ["bash", "shell", "exec_command", "write_stdin", "shell_command", "local_shell", "bashoutput", "killshell", "killbash"],
-  // Claude Code: WebFetch, WebSearch. Codex: web_search, web__run.
-  web: ["webfetch", "websearch", "web_search", "web__run"],
-  // Claude Code: TodoWrite, plan mode. Codex: update_plan.
+  // Claude Code: WebFetch, WebSearch. Codex: web_search, web__run. opencode: webfetch, websearch, codesearch.
+  web: ["webfetch", "websearch", "web_search", "web__run", "codesearch"],
+  // Claude Code: TodoWrite, plan mode. Codex: update_plan. opencode: todowrite, todoread.
   plan: ["todowrite", "todoread", "exitplanmode", "enterplanmode", "update_plan"],
   // Claude Code: Task, Agent and agent messaging. Codex: spawn_agent and friends.
   subagent: [

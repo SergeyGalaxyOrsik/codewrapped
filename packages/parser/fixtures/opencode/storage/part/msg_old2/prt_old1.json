@@ -1,0 +1,1 @@
+{"id":"prt_old1","sessionID":"ses_old","messageID":"msg_old2","type":"tool","callID":"call_1","tool":"read","state":{"status":"completed","input":{"filePath":"/home/dev/shop/README.md"},"output":"x","title":"x","metadata":{},"time":{"start":1764579670000,"end":1764579671000}}}

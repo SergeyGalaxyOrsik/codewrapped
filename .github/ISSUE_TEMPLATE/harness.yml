@@ -53,6 +53,19 @@ body:
       render: json
     validations:
       required: true
+  - type: checkboxes
+    id: opencode-legacy
+    attributes:
+      label: opencode users
+      description: |
+        Two opencode paths are not checked against real files yet:
+        sessions from before the SQLite database (JSON files under ~/.local/share/opencode/storage/, opencode 1.1 and older),
+        and sessions from opencode 2.x (the session_message table in opencode.db).
+        If you have either, a sanitized sample helps a lot: one session/, message/ and part/ file,
+        or a few session_message rows (`sqlite3 opencode.db "select type, data from session_message limit 5"`, then replace text with "x").
+      options:
+        - label: I have files in ~/.local/share/opencode/storage/ and attached a sanitized sample of each kind.
+        - label: I use opencode 2.x and attached sanitized session_message rows.
   - type: textarea
     id: notes
     attributes:

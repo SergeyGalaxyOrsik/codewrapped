@@ -41,8 +41,9 @@ export type HarnessShare = { source: Source | "other"; name: string; activeMinut
  * to 1 even when sessions of two harnesses overlap in time. Harnesses with
  * nothing in `by` are left out.
  */
-export function harnessSplit(bySource: Record<Source, SourceTotals>, by: "tokens" | "activeMinutes", n = 3): HarnessShare[] {
-  const ranked = SOURCES.map((source) => ({ source, ...bySource[source] }))
+export function harnessSplit(bySource: Partial<Record<Source, SourceTotals>>, by: "tokens" | "activeMinutes", n = 3): HarnessShare[] {
+  // A summary from an older server has no entry for newer harnesses.
+  const ranked = SOURCES.flatMap((source) => (bySource[source] ? [{ source, ...bySource[source] }] : []))
     .filter((x) => x[by] > 0)
     .sort((a, b) => b[by] - a[by] || SOURCES.indexOf(a.source) - SOURCES.indexOf(b.source));
   const total = ranked.reduce((a, x) => a + x[by], 0);
