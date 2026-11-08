@@ -24,7 +24,7 @@
   "author": "SergeyGalaxyOrsik",
   "type": "module",
   "bin": {
-    "codewrapped": "./dist/index.js"
+    "codewrapped": "dist/index.js"
   },
   "files": [
     "dist",
