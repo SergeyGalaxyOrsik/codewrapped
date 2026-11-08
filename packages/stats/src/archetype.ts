@@ -6,7 +6,7 @@ export type ArchetypeMetrics = {
   nightMinutes: number;
   /** Active minutes on Saturday and Sunday. */
   weekendMinutes: number;
-  minutesBySource: Record<Source, number>;
+  minutesBySource: Partial<Record<Source, number>>;
   toolCalls: number;
   shellCalls: number;
   readCalls: number;
@@ -135,7 +135,7 @@ export const ARCHETYPE_RULES: readonly Rule[] = [
     name: "Two agents",
     match: (m) => {
       if (m.activeMinutes < T.minActiveMinutes) return null;
-      const [a, b] = SOURCES.map((src) => ({ name: SOURCE_NAMES[src], share: m.minutesBySource[src] / m.activeMinutes }))
+      const [a, b] = SOURCES.map((src) => ({ name: SOURCE_NAMES[src], share: (m.minutesBySource[src] ?? 0) / m.activeMinutes }))
         .sort((x, y) => y.share - x.share);
       return a && b && a.share > T.sourceShare && b.share > T.sourceShare
         ? `${a.name} had ${pct(a.share)} of your time, ${b.name} ${pct(b.share)}.`

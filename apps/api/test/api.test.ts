@@ -1,7 +1,7 @@
 import { count, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { cliTokens, dailyStats, deviceCodes, profiles } from "../src/db/schema";
-import type { DailyAggregate, PublicProfile } from "@codewrapped/stats";
+import { SOURCES, type DailyAggregate, type PublicProfile } from "@codewrapped/stats";
 import { day, setup, WEB } from "./helpers";
 
 const json = async <T = Record<string, unknown>>(res: Response) => (await res.json()) as T;
@@ -135,7 +135,7 @@ describe("sync", () => {
     expect(await json(res)).toMatchObject({ received: 2, skippedCount: 1 });
     const p = await json<PublicProfile>(await t.req("GET", "/u/ada?period=7d"));
     expect(p.summary.totals.tokens.headline).toBe(100);
-    expect(Object.keys(p.summary.bySource)).toEqual(["claude", "codex"]);
+    expect(Object.keys(p.summary.bySource)).toEqual([...SOURCES]);
   });
 
   it("limits requests per token", async () => {

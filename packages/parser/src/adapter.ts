@@ -93,7 +93,7 @@ export type Adapter = {
   /** Log files under the given folders, as sorted real paths, each once. */
   listFiles(dirs: readonly string[]): Promise<string[]>;
   /** Main sessions among the files of one account folder, for the "Found logs in" line. */
-  countSessions(dirs: readonly string[], files: readonly string[]): number;
+  countSessions(dirs: readonly string[], files: readonly string[]): number | Promise<number>;
   /** Reads the files and emits events. Unknown or broken input goes into warnings, never throws. */
   parse(files: readonly string[], emit: Emit, warnings: ParseWarnings): Promise<void>;
 };

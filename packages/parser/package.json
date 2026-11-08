@@ -11,6 +11,10 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@codewrapped/stats": "workspace:*"
+    "@codewrapped/stats": "workspace:*",
+    "sql.js": "^1.15.2"
+  },
+  "devDependencies": {
+    "@types/sql.js": "^1.4.11"
   }
 }

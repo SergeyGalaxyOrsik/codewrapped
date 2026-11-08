@@ -2,14 +2,22 @@
  * Harnesses with a shipped adapter. The id is stored with every synced row,
  * so the API must accept a new id before any CLI sends it.
  */
-export const SOURCES = ["claude", "codex"] as const;
+export const SOURCES = ["claude", "codex", "pi", "opencode"] as const;
 export type Source = (typeof SOURCES)[number];
 
 /** Display names. */
-export const SOURCE_NAMES: Record<Source, string> = { claude: "Claude Code", codex: "Codex" };
+export const SOURCE_NAMES: Record<Source, string> = { claude: "Claude Code", codex: "Codex", pi: "Pi", opencode: "opencode" };
 
-/** "Claude Code and Codex": every supported harness, as plain text. */
-export const SUPPORTED_HARNESSES = SOURCES.map((s) => SOURCE_NAMES[s]).join(", ").replace(/, ([^,]*)$/, " and $1");
+/** Harnesses checked only against the maintainer's logs so far. Shown with "(beta)" until other people's logs confirm them. */
+export const BETA_SOURCES: ReadonlySet<Source> = new Set(["pi", "opencode"]);
+
+/** "Pi (beta)" for a beta harness, else its name. */
+export function sourceLabel(s: Source): string {
+  return BETA_SOURCES.has(s) ? `${SOURCE_NAMES[s]} (beta)` : SOURCE_NAMES[s];
+}
+
+/** "Claude Code, Codex, Pi (beta) and opencode (beta)": every supported harness, as plain text. */
+export const SUPPORTED_HARNESSES = SOURCES.map(sourceLabel).join(", ").replace(/, ([^,]*)$/, " and $1");
 
 export type TokenCounts = {
   /** Uncached input tokens. For Codex, cached tokens are subtracted from input_tokens. */

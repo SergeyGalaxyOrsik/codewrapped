@@ -53,6 +53,16 @@ body:
       render: json
     validations:
       required: true
+  - type: checkboxes
+    id: opencode-legacy
+    attributes:
+      label: opencode users with old sessions
+      description: |
+        Sessions from opencode before the SQLite database are read from JSON files under ~/.local/share/opencode/storage/,
+        but that path has not been checked against real files yet. If you have them, a sanitized sample of one
+        session/, message/ and part/ file helps a lot.
+      options:
+        - label: I have files in ~/.local/share/opencode/storage/ and attached a sanitized sample of each kind.
   - type: textarea
     id: notes
     attributes:

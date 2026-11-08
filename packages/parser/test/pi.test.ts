@@ -1,0 +1,39 @@
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { listJsonl, parseFiles } from "../src/index";
+
+const root = join(import.meta.dirname, "../fixtures/pi/sessions");
+
+async function parse() {
+  return parseFiles({ files: { pi: await listJsonl(root) }, timeZone: "UTC" });
+}
+
+describe("pi adapter", () => {
+  it("counts every branch of the tree and a forked copy once", async () => {
+    const { aggregates } = await parse();
+    expect(aggregates).toHaveLength(1);
+    const row = aggregates[0]!;
+    expect(row.source).toBe("pi");
+    // p1 and its fork p2. Prompts: e02 and the branch e06 in p1, f01 in p2. The copied e02 is not counted again.
+    expect(row.sessions).toBe(2);
+    expect(row.messages).toBe(3);
+    expect(row.tools).toEqual({ bash: 1, write: 1, edit: 1, read: 1 });
+    expect(row.toolCategories).toEqual({ search: 1, edit: 2, read: 1 });
+    expect(row.files).toEqual({ "cart.ts": 2 });
+    expect(row.repos.shop!.tokens).toBe(100 + 50 + 200 + 10 + 5 + 20 + 10 + 1_000_000);
+  });
+
+  it("uses the cost Pi recorded, and the price table when Pi recorded 0", async () => {
+    const { aggregates } = await parse();
+    const models = aggregates[0]!.models;
+    expect(models["claude-sonnet-5-5"]!.costUsd).toBeCloseTo(0.00175 + 0.001 + 0.002, 9);
+    // The router's answer names the model; GLM 4.6 input is $0.60 per million.
+    expect(models["z-ai/glm-4.6"]!.costUsd).toBeCloseTo(0.6, 9);
+  });
+
+  it("reports unknown entries and broken lines", async () => {
+    const { warnings } = await parse();
+    expect(warnings.pi.unknownEvents).toEqual({ "pi:mystery_entry": 1 });
+    expect(warnings.pi.badLines).toBe(1);
+  });
+});
