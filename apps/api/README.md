@@ -40,16 +40,31 @@ After changing `src/db/schema.ts`, run `pnpm --filter @codewrapped/api db:genera
 
 ## Deploy on Dokploy
 
-1. **GitHub OAuth App** at github.com/settings/developers -> New OAuth App.
-   - Homepage URL: `https://codewrapped.app`
-   - Authorization callback URL: `https://api.codewrapped.app/auth/callback/github`
-2. **Database.** In the Dokploy project, create a Postgres service (16 or newer). Copy its internal connection URL.
-3. **Application.** Create an Application from this repository.
+First, a **GitHub OAuth App** at github.com/settings/developers -> New OAuth App:
+- Homepage URL: `https://codewrapped.app`
+- Authorization callback URL: `https://api.codewrapped.app/auth/callback/github`
+
+Then point the DNS A record of `api.codewrapped.app` at the Dokploy server, and pick one of the two setups below.
+
+### Option A: Docker Compose (API and Postgres together)
+
+`docker-compose.yml` in this folder runs the API and Postgres 16 as one stack. Postgres is only on the stack's internal network; the API is reachable through Dokploy's Traefik.
+
+1. In a Dokploy project, create a **Compose** service from this repository. Compose type: Docker Compose. Compose Path: `./apps/api/docker-compose.yml`.
+2. **Environment** tab: paste `.env.compose.example` and fill in the values. Dokploy writes them to a `.env` file next to the compose file; the compose file passes them to the containers. A missing value stops the deploy with a message naming it.
+3. **Domains** tab: add `api.codewrapped.app`, service `api`, container port `3000`, HTTPS on.
+4. **Deploy.** The API waits for Postgres to be healthy, runs migrations and starts.
+5. **Backups:** add a Volume Backup for the `pgdata` volume.
+
+### Option B: separate Postgres service and Application
+
+1. **Database.** In the Dokploy project, create a Postgres service (16 or newer). Copy its internal connection URL.
+2. **Application.** Create an Application from this repository.
    - Build type: Dockerfile. Dockerfile path: `apps/api/Dockerfile`. Build context: the repository root (`.`).
    - Environment: every variable in `.env.example`. Generate `BETTER_AUTH_SECRET` with `openssl rand -hex 32`.
    - Domain: `api.codewrapped.app`, container port `3000`, HTTPS on.
    - Health check path: `/health`.
-4. **Deploy.** Migrations run on every start before the server listens. They are safe to run again.
+3. **Deploy.** Migrations run on every start before the server listens. They are safe to run again.
 
 Run one replica. The public summary cache and the sync rate limit live in memory; with more replicas they would need Redis.
 

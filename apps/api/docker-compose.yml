@@ -1,0 +1,63 @@
+# codewrapped API and its Postgres, for a Dokploy "Docker Compose" service.
+#
+# Dokploy settings:
+#   Compose Path:  ./apps/api/docker-compose.yml
+#   Environment:   the variables from .env.compose.example (Dokploy writes them to .env next to this file)
+#   Domains:       api.codewrapped.app -> service "api", port 3000, HTTPS on
+#   Backups:       Volume Backups on the "pgdata" volume
+#
+# Locally: docker network create dokploy-network
+#          docker compose -f apps/api/docker-compose.yml --env-file apps/api/.env up -d --build
+
+services:
+  api:
+    build:
+      # The Dockerfile builds from the repository root (pnpm workspace).
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-codewrapped}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-codewrapped}
+      PORT: "3000"
+      WEB_URL: ${WEB_URL:?Set WEB_URL, e.g. https://codewrapped.app}
+      API_URL: ${API_URL:?Set API_URL, e.g. https://api.codewrapped.app}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET (openssl rand -hex 32)}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:?Set GITHUB_CLIENT_ID}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:?Set GITHUB_CLIENT_SECRET}
+    # Reached through Traefik only. Dokploy attaches the domain in the Domains tab.
+    expose:
+      - "3000"
+    networks:
+      - default
+      - dokploy-network
+    # One replica: the public summary cache and the sync rate limit live in memory.
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-codewrapped}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-codewrapped}
+    volumes:
+      # A named volume, so Dokploy Volume Backups can back it up.
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Only on the internal network: the database is not reachable from outside.
+    networks:
+      - default
+
+volumes:
+  pgdata:
+
+networks:
+  dokploy-network:
+    external: true
