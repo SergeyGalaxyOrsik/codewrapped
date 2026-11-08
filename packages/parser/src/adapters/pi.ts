@@ -14,8 +14,15 @@ import { countUnknown, parseTime, readJsonl, type ParseWarnings } from "../lines
  * The first line is a session header with the working directory; every other
  * line is an entry with id and parentId, which form a tree: /tree continues
  * from an earlier entry in the same file. Every entry counts, not only the
- * branch that is active now. /fork writes a new file that copies the path it
- * forked from with the same ids and timestamps; those copies count once.
+ * branch that is active now, the same as Pi's own /session totals
+ * (getSessionStats in agent-session.ts): assistant messages, usage entries,
+ * usage on compaction and branch summaries, and usage on tool results.
+ *
+ * /fork and /clone write a new file that copies the forked path with the same
+ * ids and timestamps (createBranchedSession in session-manager.ts), --fork
+ * copies every entry (forkFrom). Copies count once: files are read oldest
+ * first by their name, which starts with the creation time, so the original
+ * keeps its entries. Labels are re-created with new ids and are not activity.
  *
  * Pi has no marker for print, RPC or SDK runs, so every session counts as
  * interactive.
@@ -58,7 +65,9 @@ async function parse(files: readonly string[], emit: Emit, warnings: ParseWarnin
   const seenEntries = new Set<string>();
   const seenCalls = new Set<string>();
 
-  for (const file of files) {
+  // Oldest first by file name (<creation time>_<id>.jsonl), across folders, so an original is read before its forks.
+  const ordered = [...files].sort((a, b) => basename(a).localeCompare(basename(b)) || a.localeCompare(b));
+  for (const file of ordered) {
     let session: string | null = null;
     let cwd: string | null = null;
     /** For usage entries that do not name a model. */
@@ -66,9 +75,10 @@ async function parse(files: readonly string[], emit: Emit, warnings: ParseWarnin
 
     const addUsage = (s: string, t: number, raw: Obj | null, modelName: string | null) => {
       if (!raw) return;
-      // input excludes cache; output includes reasoning: totalTokens = input + output + cacheRead + cacheWrite.
-      const u = { input: num(raw.input), output: num(raw.output), cacheRead: num(raw.cacheRead), cacheWrite: num(raw.cacheWrite), cacheWriteLong: 0 };
-      if (u.input + u.output + u.cacheRead + u.cacheWrite === 0) return;
+      // input excludes cache; output includes reasoning; cacheWrite1h is the part of cacheWrite kept for an hour.
+      const long = Math.min(num(raw.cacheWrite1h), num(raw.cacheWrite));
+      const u = { input: num(raw.input), output: num(raw.output), cacheRead: num(raw.cacheRead), cacheWrite: num(raw.cacheWrite) - long, cacheWriteLong: long };
+      if (u.input + u.output + u.cacheRead + u.cacheWrite + u.cacheWriteLong === 0) return;
       const cost = obj(raw.cost);
       emit({ type: "usage", session: s, t, model: modelName ?? "unknown", usage: u, costUsd: cost ? num(cost.total) : null, cwd });
     };
@@ -93,7 +103,8 @@ async function parse(files: readonly string[], emit: Emit, warnings: ParseWarnin
         session = file;
         emit({ type: "session", session });
       }
-      if (t === null) return;
+      // A bookmark, re-created with a new id in every fork: not activity.
+      if (t === null || type === "label") return;
       const id = str(e.id);
       if (id) {
         const key = `${id}|${String(e.timestamp)}`;
@@ -106,9 +117,12 @@ async function parse(files: readonly string[], emit: Emit, warnings: ParseWarnin
       const role = str(message?.role);
       const prompt = role === "user" && message !== null && isTypedPrompt(message);
       const reply = role === "assistant";
-      emit({ type: "tick", session, t, cwd, active: prompt || reply });
+      // A command the person ran with ! is their activity, but not a prompt or a model tool call.
+      emit({ type: "tick", session, t, cwd, active: prompt || reply || role === "bashExecution" });
       if (prompt) emit({ type: "prompt", session, t });
-      if (USAGE_ENTRIES.has(type)) addUsage(session, t, obj(e.usage), str(e.model) ?? str(e.modelId) ?? model);
+      // Usage entries name their model; summaries and tool results do not, so they go to the session's model.
+      if (USAGE_ENTRIES.has(type)) addUsage(session, t, obj(e.usage), str(e.model) ?? model);
+      if (role === "toolResult" && message) addUsage(session, t, obj(message.usage), model);
       if (!reply || !message) return;
 
       // The model that answered, when a router picked it, else the one asked for.

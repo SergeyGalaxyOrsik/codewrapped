@@ -20,19 +20,28 @@ describe("pi adapter", () => {
     // counted again, and the /skill expansion e10 is not a typed prompt.
     expect(row.sessions).toBe(2);
     expect(row.messages).toBe(3);
+    // bashExecution (a command the person ran with !) is activity, not a tool call.
     expect(row.tools).toEqual({ bash: 1, write: 1, edit: 1, read: 1 });
     expect(row.toolCategories).toEqual({ search: 1, edit: 2, read: 1 });
     expect(row.files).toEqual({ "cart.ts": 2 });
-    // The cache warm-up entry e09 adds its 1,000 cache-write tokens.
-    expect(row.repos.shop!.tokens).toBe(100 + 50 + 200 + 10 + 5 + 20 + 10 + 1000 + 1_000_000);
+    // Also the cache warm-up entry e09, the tool result's nested model work e11, and e12.
+    expect(row.repos.shop!.tokens).toBe(100 + 50 + 200 + 10 + 5 + 20 + 10 + 1000 + 10 + 302 + 1_000_000);
+    expect(row.tokens.cacheWrite).toBe(200 + 1000 + 300);
   });
 
   it("uses the cost Pi recorded, and the price table when Pi recorded 0", async () => {
     const { aggregates } = await parse();
     const models = aggregates[0]!.models;
-    expect(models["claude-sonnet-5-5"]!.costUsd).toBeCloseTo(0.00175 + 0.001 + 0.002 + 0.003, 9);
+    expect(models["claude-sonnet-5-5"]!.costUsd).toBeCloseTo(0.00175 + 0.001 + 0.002 + 0.003 + 0.0005 + 0.0001, 9);
     // The router's answer names the model; GLM 4.6 input is $0.60 per million.
     expect(models["z-ai/glm-4.6"]!.costUsd).toBeCloseTo(0.6, 9);
+  });
+
+  it("gives the same result whatever order the files come in, so a fork never takes its parent's entries", async () => {
+    const files = await listJsonl(root);
+    const forward = await parseFiles({ files: { pi: files }, timeZone: "UTC" });
+    const reversed = await parseFiles({ files: { pi: [...files].reverse() }, timeZone: "UTC" });
+    expect(reversed.aggregates).toEqual(forward.aggregates);
   });
 
   it("reports unknown entries and broken lines", async () => {
