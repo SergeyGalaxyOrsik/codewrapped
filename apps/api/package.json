@@ -1,0 +1,28 @@
+{
+  "name": "@codewrapped/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json",
+    "db:generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.6",
+    "better-auth": "1.7.18",
+    "drizzle-orm": "0.45.4",
+    "hono": "4.13.17",
+    "postgres": "4.1.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@codewrapped/stats": "workspace:*",
+    "@electric-sql/pglite": "0.5.15",
+    "drizzle-kit": "0.31.11",
+    "tsup": "9.0.0"
+  }
+}

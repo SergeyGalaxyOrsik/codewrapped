@@ -1,0 +1,21 @@
+{
+  "name": "@codewrapped/card",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./png": "./src/png.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json",
+    "drafts": "tsx scripts/drafts.ts"
+  },
+  "dependencies": {
+    "@codewrapped/brand": "workspace:*",
+    "@codewrapped/stats": "workspace:*",
+    "@resvg/resvg-wasm": "2.6.2",
+    "satori": "0.63.2"
+  }
+}

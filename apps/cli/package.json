@@ -1,0 +1,30 @@
+{
+  "name": "codewrapped",
+  "version": "0.1.0",
+  "description": "A Wrapped for coding agents. Reads local Claude Code and Codex logs and shows your stats.",
+  "type": "module",
+  "bin": {
+    "codewrapped": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@codewrapped/brand": "workspace:*",
+    "@codewrapped/card": "workspace:*",
+    "@codewrapped/parser": "workspace:*",
+    "@codewrapped/stats": "workspace:*",
+    "@resvg/resvg-wasm": "2.6.2",
+    "satori": "0.63.2"
+  },
+  "license": "MIT"
+}

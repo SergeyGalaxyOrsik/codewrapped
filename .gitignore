@@ -1,0 +1,8 @@
+node_modules
+dist
+.turbo
+*.png
+!docs/**/*.png
+.env
+.env.*
+!.env.example
