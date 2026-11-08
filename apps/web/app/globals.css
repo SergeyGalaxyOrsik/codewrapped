@@ -1,0 +1,46 @@
+@import "tailwindcss";
+@import "./brand.css";
+
+@font-face { font-family: "Geist"; src: url("/fonts/Geist-Regular.ttf") format("truetype"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Geist"; src: url("/fonts/Geist-Medium.ttf") format("truetype"); font-weight: 500; font-display: swap; }
+@font-face { font-family: "Geist"; src: url("/fonts/Geist-SemiBold.ttf") format("truetype"); font-weight: 600; font-display: swap; }
+@font-face { font-family: "Commit Mono"; src: url("/fonts/CommitMono-400-Regular.ttf") format("truetype"); font-weight: 400; font-display: swap; }
+
+@theme inline {
+  --color-bg: var(--cw-bg);
+  --color-surface: var(--cw-surface);
+  --color-border: var(--cw-border);
+  --color-muted: var(--cw-muted);
+  --color-fg: var(--cw-fg);
+  --color-ribbon: var(--cw-ribbon);
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Commit Mono", ui-monospace, SFMono-Regular, monospace;
+  --radius-control: 8px;
+  --radius-card: 12px;
+}
+
+html {
+  background: var(--cw-bg);
+  color: var(--cw-fg);
+  font-family: var(--font-sans);
+  font-feature-settings: "tnum" 1;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--cw-fg);
+  outline-offset: 2px;
+}
+
+/* The one moment of motion: the ribbon draws across the card on the profile page. */
+@keyframes cw-ribbon-draw {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+.cw-animate [data-part="ribbon"] {
+  animation: cw-ribbon-draw 300ms ease-out both;
+  animation-delay: 80ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cw-animate [data-part="ribbon"] { animation: none; }
+}

@@ -1,6 +1,8 @@
 import { sql } from "drizzle-orm";
 import { boolean, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
-import type { DailyAggregate } from "@codewrapped/stats";
+import { DEFAULT_VISIBILITY, type DailyAggregate, type Visibility } from "@codewrapped/stats";
+
+export { DEFAULT_VISIBILITY, type Visibility };
 
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -58,25 +60,6 @@ export const verifications = pgTable("verifications", {
 });
 
 // ---- codewrapped tables ----
-
-/** What a profile shows publicly. Files and repositories are hidden until the owner turns them on. */
-export type Visibility = {
-  files: boolean;
-  repos: boolean;
-  cost: boolean;
-  models: boolean;
-  tools: boolean;
-  heatmap: boolean;
-};
-
-export const DEFAULT_VISIBILITY: Visibility = {
-  files: false,
-  repos: false,
-  cost: true,
-  models: true,
-  tools: true,
-  heatmap: true,
-};
 
 export const profiles = pgTable(
   "profiles",

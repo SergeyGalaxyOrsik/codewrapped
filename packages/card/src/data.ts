@@ -5,12 +5,16 @@ import {
   formatCompact,
   formatHours,
   formatInt,
+  formatShare,
   formatUsd,
   plural,
   truncateMiddle,
   WEEKDAYS,
-  type Summary,
+  type PublicSummary,
 } from "@codewrapped/stats";
+
+/** A local summary or a public one with hidden sections set to null. */
+export type CardSummary = PublicSummary;
 
 export type CardOptions = {
   theme?: Theme;
@@ -32,14 +36,14 @@ export type CardData = {
   hero: { value: string; unit: string };
   /** "with Claude Code and Codex". Names only the agents that were used. */
   heroLabel: string;
-  /** "221 h of agent time, up to 9 sessions at once", or null without parallel work. */
+  /** "120 h of agent time, up to 4 sessions at once", or null without parallel work. */
   parallel: string | null;
   stats: CardStat[];
-  /** Top repositories by tokens; most edited files when repositories are hidden. */
+  /** Top repositories by tokens; else most edited files; else models. */
   ranked: { title: string; rows: Array<{ name: string; count: string }> } | null;
   tools: Array<{ name: string; count: string; share: number }>;
-  /** 7 x 24 heat steps 0-4, Monday first. */
-  heatmap: number[][];
+  /** 7 x 24 heat steps 0-4, Monday first. Null when hidden. */
+  heatmap: number[][] | null;
   busiest: string | null;
   archetype: { name: string; sentence: string };
   command: string;
@@ -59,7 +63,7 @@ export function formatRange(start: string, end: string): string {
   return `${shortDate(start, !sameYear)} to ${shortDate(end, true)}`;
 }
 
-export function periodLabel(s: Summary): string {
+export function periodLabel(s: CardSummary): string {
   if (s.period === "all") return "all time";
   if (s.period === "year" && !s.truncated) return `${s.range.end.slice(0, 4)} so far`;
   return s.range.days === 1 ? "today" : `last ${s.range.days} days`;
@@ -86,7 +90,7 @@ export function heatSteps(heatmap: number[][]): number[][] {
   );
 }
 
-function agentsLabel(s: Summary): string {
+function agentsLabel(s: CardSummary): string {
   const claude = s.bySource.claude.activeMinutes > 0;
   const codex = s.bySource.codex.activeMinutes > 0;
   if (claude && codex) return "with Claude Code and Codex";
@@ -95,13 +99,13 @@ function agentsLabel(s: Summary): string {
   return "with coding agents";
 }
 
-export function cardData(s: Summary, opts: CardOptions = {}): CardData {
+export function cardData(s: CardSummary, opts: CardOptions = {}): CardData {
   const t = s.totals;
   const handle = opts.handle ?? null;
   const time = durationParts(t.activeMinutes);
 
   const stats: CardStat[] = [{ value: `${time.value} ${time.unit}`, label: "with agents" }];
-  if (t.costUsd > 0) stats.push({ value: formatUsd(t.costUsd), label: "at API prices (est.)" });
+  if (t.costUsd !== null && t.costUsd > 0) stats.push({ value: formatUsd(t.costUsd), label: "at API prices (est.)" });
   stats.push({
     value: formatInt(t.sessions),
     label: `${t.sessions === 1 ? "session" : "sessions"}${s.longestStreakDays > 1 ? `, ${s.longestStreakDays}-day streak` : ""}`,
@@ -125,13 +129,15 @@ export function cardData(s: Summary, opts: CardOptions = {}): CardData {
         ? { title: "Repositories", rows: s.topRepos.map((r) => ({ name: r.name, count: formatCompact(r.tokens) })) }
         : s.topFiles.length > 0
           ? { title: "Most edited", rows: s.topFiles.slice(0, 3).map((f) => ({ name: f.name, count: formatInt(f.count) })) }
-          : null,
+          : s.models && s.models.length > 0
+            ? { title: "Models", rows: s.models.slice(0, 3).map((m) => ({ name: m.model, count: formatShare(m.share) })) }
+            : null,
     tools: s.topTools.slice(0, 3).map((f) => ({
       name: displayToolName(f.name),
       count: formatInt(f.count),
       share: maxTool > 0 ? f.count / maxTool : 0,
     })),
-    heatmap: heatSteps(s.heatmap),
+    heatmap: s.heatmap ? heatSteps(s.heatmap) : null,
     busiest:
       s.busiestWeekday !== null && s.busiestHour !== null
         ? `${WEEKDAYS[s.busiestWeekday]}s at ${String(s.busiestHour).padStart(2, "0")}:00`

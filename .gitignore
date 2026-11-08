@@ -6,3 +6,12 @@ dist
 .env
 .env.*
 !.env.example
+coverage
+*.tsbuildinfo
+*.log
+.DS_Store
+.vercel
+.next
+auth.json
+**/drafts/
+*.summary.json

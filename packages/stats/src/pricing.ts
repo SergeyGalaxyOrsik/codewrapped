@@ -4,8 +4,8 @@
  * estimate: subscription plans are billed differently.
  *
  * Checked on 2026-11-08 against:
- * - Anthropic: Claude API pricing (claude-api skill model table, cached 2026-10-06,
- *   and its prompt-caching notes for cache read/write multipliers)
+ * - Anthropic: https://platform.claude.com/docs/en/about-claude/pricing
+ *   (cache reads and writes per https://platform.claude.com/docs/en/build-with-claude/prompt-caching)
  * - OpenAI: https://developers.openai.com/api/docs/pricing (standard tier)
  *
  * Models that are not listed count tokens but get no cost.

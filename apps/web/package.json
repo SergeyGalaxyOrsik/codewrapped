@@ -1,0 +1,30 @@
+{
+  "name": "@codewrapped/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prepare-brand": "tsx scripts/prepare-brand.ts",
+    "dev": "pnpm prepare-brand && next dev --port 3001",
+    "build": "pnpm prepare-brand && next build",
+    "start": "next start --port 3001",
+    "typecheck": "pnpm prepare-brand && tsc --noEmit"
+  },
+  "dependencies": {
+    "@codewrapped/brand": "workspace:*",
+    "@codewrapped/card": "workspace:*",
+    "@codewrapped/stats": "workspace:*",
+    "next": "16.4.5",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.5",
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "tailwindcss": "4.3.5",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
+  }
+}

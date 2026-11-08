@@ -4,7 +4,7 @@ export function formatInt(n: number): string {
   return Math.round(n).toLocaleString("en-US");
 }
 
-/** 3 significant figures with a unit: 1.82B, 41.2M, 238M, 940. */
+/** 3 significant figures with a unit: 1.82B, 41.2M, 512M, 940. */
 export function formatCompact(n: number): string {
   const units: Array<[number, string]> = [
     [1e12, "T"],
@@ -39,7 +39,7 @@ export function formatHours(minutes: number): string {
   return `${p.value} ${p.unit}`;
 }
 
-/** "1 session", "291 sessions". */
+/** "1 session", "120 sessions". */
 export function plural(n: number, one: string, many = `${one}s`): string {
   return `${formatInt(n)} ${n === 1 ? one : many}`;
 }
@@ -61,4 +61,10 @@ export function truncateMiddle(name: string, max: number): string {
 export function displayToolName(name: string): string {
   const mcp = /^mcp__(.+?)__(.+)$/.exec(name);
   return mcp ? `${mcp[1]}: ${mcp[2]}` : name;
+}
+
+/** 0.65 -> "65%", 0.004 -> "<1%". */
+export function formatShare(share: number): string {
+  if (share > 0 && share < 0.005) return "<1%";
+  return `${Math.round(share * 100)}%`;
 }

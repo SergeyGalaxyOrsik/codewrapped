@@ -54,8 +54,13 @@ export function header(f: Frame): El {
 /** The red band. The one bold element: it carries the period and nothing else. */
 export function ribbon(f: Frame, height: number, paddingX: number): El {
   const c = palette(f);
-  return div(
-    { height, backgroundColor: c.ribbon, alignItems: "center", paddingLeft: paddingX, paddingRight: paddingX },
+  // data-part lets the web page animate the band; satori ignores it.
+  return h(
+    "div",
+    {
+      "data-part": "ribbon",
+      style: { height, backgroundColor: c.ribbon, alignItems: "center", paddingLeft: paddingX, paddingRight: paddingX },
+    },
     text(sans(f.type.label, c.onRibbon, 500, { lineHeight: 1 }), f.d.period),
   );
 }
@@ -148,12 +153,14 @@ export function toolList(f: Frame, width: number): El | null {
   );
 }
 
-export function heatmap(f: Frame, cell: number, gap: number): El {
+export function heatmap(f: Frame, cell: number, gap: number): El | null {
+  const steps = f.d.heatmap;
+  if (!steps) return null;
   const c = palette(f);
   const fill = (step: number) => (step === 0 ? c.border : rgba(c.fg, STEPS[step]!));
   return div(
     { flexDirection: "column", gap },
-    ...f.d.heatmap.map((row) =>
+    ...steps.map((row) =>
       div(
         { gap },
         ...row.map((step) =>
@@ -164,7 +171,8 @@ export function heatmap(f: Frame, cell: number, gap: number): El {
   );
 }
 
-export function busiest(f: Frame, cell: number, gap: number): El {
+export function busiest(f: Frame, cell: number, gap: number): El | null {
+  if (!f.d.heatmap) return null;
   const c = palette(f);
   return div(
     { flexDirection: "column", gap: Math.round(f.type.label * 0.55) },
@@ -174,7 +182,7 @@ export function busiest(f: Frame, cell: number, gap: number): El {
   );
 }
 
-/** "Shell first. 76% of tool calls were shell commands." Wraps by word. */
+/** "Night shift. 46% of your agent time was between 22:00 and 04:00." Wraps by word. */
 export function sentence(f: Frame, width: number): El {
   const c = palette(f);
   const size = f.type.label;

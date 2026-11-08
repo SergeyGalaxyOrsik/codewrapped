@@ -94,6 +94,6 @@ describe("archetypes", () => {
   it("formats durations", () => {
     expect(formatDuration(45)).toBe("45 min");
     expect(formatDuration(120)).toBe("2 h");
-    expect(formatDuration(793)).toBe("13 h 13 min");
+    expect(formatDuration(754)).toBe("12 h 34 min");
   });
 });

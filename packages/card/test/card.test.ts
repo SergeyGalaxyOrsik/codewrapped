@@ -54,6 +54,17 @@ describe("cardData", () => {
   });
 });
 
+describe("public summaries", () => {
+  it("drop hidden sections and fall back to models when names are hidden", () => {
+    const s = cases.big!.summary;
+    const hidden = { ...s, topRepos: [], topFiles: [], heatmap: null, totals: { ...s.totals, costUsd: null } };
+    const d = cardData(hidden);
+    expect(d.heatmap).toBeNull();
+    expect(d.ranked?.title).toBe("Models");
+    expect(d.stats.map((x) => x.label)).not.toContain("at API prices (est.)");
+  });
+});
+
 describe("heatSteps", () => {
   it("leaves empty cells at 0 and gives the busiest cell the top step", () => {
     const grid = Array.from({ length: 7 }, () => new Array<number>(24).fill(0));

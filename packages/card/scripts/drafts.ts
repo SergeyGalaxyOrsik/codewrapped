@@ -1,9 +1,10 @@
 /**
  * Renders every landscape variant for the given summaries.
  *
- *   pnpm --filter @codewrapped/card drafts <outDir> real=<summary.json> [no-codex=<summary.json>]
+ *   pnpm --filter @codewrapped/card drafts <outDir> [name=<summary.json> ...]
  *
- * Summary files are the output of `codewrapped --json`.
+ * Summary files are the output of `codewrapped --json`. They hold your own
+ * usage, so keep outDir and the JSON files outside the repository.
  */
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { createRequire } from "node:module";

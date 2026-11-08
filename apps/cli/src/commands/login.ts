@@ -14,13 +14,13 @@ export async function login(out: (s?: string) => void): Promise<number> {
     out(`This computer is connected as @${existing.handle}. Logging in again replaces that connection.`);
   }
   const config = await loadConfig();
-  const start = await api<Start>(base, "POST", "/cli/device", {
-    body: { machineLabel: hostname().slice(0, 100) || "computer", machineId: config.machineId },
-  });
+  const machineLabel = hostname().slice(0, 100) || "computer";
+  const start = await api<Start>(base, "POST", "/cli/device", { body: { machineLabel, machineId: config.machineId } });
 
   out(`Open this page and check that it shows ${bold(start.userCode)}:`);
   out(`  ${start.verifyUrl}`);
   if (process.stdout.isTTY) openFile(start.verifyUrl);
+  out(dim(`This computer shows up as "${machineLabel}" in your settings. Only you see that name.`));
   out(dim("Waiting for you to approve in the browser..."));
 
   let interval = start.interval;

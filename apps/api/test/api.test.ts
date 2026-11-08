@@ -1,7 +1,7 @@
 import { count, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { cliTokens, dailyStats, deviceCodes, profiles } from "../src/db/schema";
-import type { PublicProfile } from "../src/lib/public";
+import type { PublicProfile } from "@codewrapped/stats";
 import { day, setup, WEB } from "./helpers";
 
 const json = async <T = Record<string, unknown>>(res: Response) => (await res.json()) as T;

@@ -1,0 +1,6 @@
+.next
+next-env.d.ts
+public/fonts
+app/brand.css
+app/icon.svg
+.env*.local

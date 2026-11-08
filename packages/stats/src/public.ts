@@ -1,5 +1,24 @@
-import { activityCalendar, headlineTokens, summarize, type DailyAggregate, type Period, type Summary } from "@codewrapped/stats";
-import type { Visibility } from "../db/schema";
+import { activityCalendar, summarize, type Summary } from "./summarize";
+import { headlineTokens, type DailyAggregate, type Period } from "./types";
+
+/** What a profile shows publicly. Files and repositories are hidden until the owner turns them on. */
+export type Visibility = {
+  files: boolean;
+  repos: boolean;
+  cost: boolean;
+  models: boolean;
+  tools: boolean;
+  heatmap: boolean;
+};
+
+export const DEFAULT_VISIBILITY: Visibility = {
+  files: false,
+  repos: false,
+  cost: true,
+  models: true,
+  tools: true,
+  heatmap: true,
+};
 
 /** A summary with the sections the owner hid set to null. */
 export type PublicSummary = Omit<Summary, "heatmap" | "models" | "totals"> & {

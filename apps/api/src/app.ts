@@ -3,14 +3,13 @@ import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { z } from "zod";
-import { PERIODS, type Period } from "@codewrapped/stats";
+import { buildPublicProfile, PERIODS, todayIn, type Period, type PublicProfile } from "@codewrapped/stats";
 import type { Db } from "./db";
 import { cliTokens, dailyStats, DEFAULT_VISIBILITY, deviceCodes, profiles, users, type Visibility } from "./db/schema";
 import { TtlCache } from "./lib/cache";
 import { randomId, randomToken, sha256, userCode } from "./lib/crypto";
 import { fail } from "./lib/errors";
 import { handleTaken } from "./lib/profiles";
-import { buildPublicProfile, todayIn, type PublicProfile } from "./lib/public";
 import { RateLimiter } from "./lib/ratelimit";
 import { HANDLE_RE, SyncBody } from "./validation";
 

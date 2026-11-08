@@ -2,3 +2,6 @@
 **/dist
 **/.turbo
 **/.env
+**/.env.*
+!**/.env.example
+**/.next
