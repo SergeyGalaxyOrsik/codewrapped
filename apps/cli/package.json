@@ -1,6 +1,6 @@
 {
   "name": "codewrapped",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A Wrapped for coding agents. Reads local Claude Code, Codex, Pi, opencode and ZCode logs and shows your stats.",
   "keywords": [
     "claude-code",
