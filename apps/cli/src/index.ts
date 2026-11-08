@@ -4,11 +4,10 @@ import {
   LocalClock,
   parseFiles,
   systemTimeZone,
-  type Agent,
   type LocalLogs,
   type ParseWarnings,
 } from "@codewrapped/parser";
-import { summarize, PRICING_CHECKED_ON } from "@codewrapped/stats";
+import { summarize, PRICING_CHECKED_ON, SOURCE_NAMES, SOURCES, type Source } from "@codewrapped/stats";
 import pkg from "../package.json";
 import { HELP, parseCli, UsageError, type CliOptions } from "./args";
 import { openFile, shareUrl, writeCard } from "./card";
@@ -16,15 +15,16 @@ import { login } from "./commands/login";
 import { logout } from "./commands/logout";
 import { sync } from "./commands/sync";
 import { loadAuth, loadConfig, saveConfig, type Config } from "./config";
-import { formatSummary, SOURCE_NAMES } from "./format";
+import { formatSummary } from "./format";
 import { dim, int, pad, tildify } from "./ui";
 
 const out = (s = "") => process.stdout.write(`${s}\n`);
 const err = (s = "") => process.stderr.write(`${s}\n`);
 
-function warningLine(w: { claude: ParseWarnings; codex: ParseWarnings }): string | null {
-  const bad = w.claude.badLines + w.codex.badLines;
-  const unknown = [w.claude, w.codex].reduce(
+function warningLine(w: Record<Source, ParseWarnings>): string | null {
+  const all = Object.values(w);
+  const bad = all.reduce((n, x) => n + x.badLines, 0);
+  const unknown = all.reduce(
     (n, x) => n + Object.values(x.unknownEvents).reduce((a, b) => a + b, 0),
     0,
   );
@@ -40,10 +40,12 @@ type LocalData = Awaited<ReturnType<typeof parseFiles>> & {
   counts: string[];
   started: number;
   folders: string[];
-  files: { claude: number; codex: number };
+  files: Record<Source, number>;
 };
 
-const AGENT_NAMES: Record<Agent, string> = { claude: "Claude Code", codex: "Codex" };
+/** "Claude Code or Codex", for messages about every harness. */
+const ANY_HARNESS = SOURCES.map((s) => SOURCE_NAMES[s]).join(", ").replace(/, ([^,]*)$/, " or $1");
+const DIR_FLAGS = SOURCES.map((s) => `--${s}-dir`).join(" or ");
 const sessions = (n: number) => `${int(n)} ${n === 1 ? "session" : "sessions"}`;
 
 /**
@@ -52,9 +54,7 @@ const sessions = (n: number) => `${int(n)} ${n === 1 ? "session" : "sessions"}`;
  * are not saved.
  */
 async function reportFolders(opts: CliOptions, logs: LocalLogs, config: Config, say: (s?: string) => void): Promise<void> {
-  const agents = (["claude", "codex"] as const).filter(
-    (a) => (opts.source === "all" || opts.source === a) && (a === "claude" ? opts.claudeDirs : opts.codexDirs).length === 0,
-  );
+  const agents = SOURCES.filter((a) => (opts.source === "all" || opts.source === a) && !opts.dirs[a]?.length);
   const roots = logs.roots.filter((r) => agents.includes(r.agent));
   if (agents.length === 0 || roots.length === 0) return;
   const before = config.logFolders;
@@ -62,9 +62,9 @@ async function reportFolders(opts: CliOptions, logs: LocalLogs, config: Config, 
   if (!before) {
     const width = Math.max(...roots.map((r) => tildify(r.root).length)) + 3;
     say(dim("Found logs in"));
-    for (const r of roots) say(dim(`  ${pad(tildify(r.root), width)}${AGENT_NAMES[r.agent]}, ${sessions(r.sessions)}`));
+    for (const r of roots) say(dim(`  ${pad(tildify(r.root), width)}${SOURCE_NAMES[r.agent]}, ${sessions(r.sessions)}`));
   } else if (fresh.length > 0) {
-    const list = fresh.map((r) => `${tildify(r.root)} (${AGENT_NAMES[r.agent]}, ${sessions(r.sessions)})`).join(", ");
+    const list = fresh.map((r) => `${tildify(r.root)} (${SOURCE_NAMES[r.agent]}, ${sessions(r.sessions)})`).join(", ");
     say(dim(`New log ${fresh.length === 1 ? "folder" : "folders"}: ${list}`));
   }
   if (!before || fresh.length > 0) {
@@ -78,35 +78,28 @@ async function reportFolders(opts: CliOptions, logs: LocalLogs, config: Config, 
 async function readLocal(opts: CliOptions, say: (s?: string) => void): Promise<LocalData | null> {
   const timeZone = opts.timeZone ?? systemTimeZone();
   const config = await loadConfig();
-  const logs = await findLocalLogs(opts.source, {
-    claudeDirs: opts.claudeDirs,
-    codexDirs: opts.codexDirs,
-    saved: config.logFolders,
-  });
+  const logs = await findLocalLogs(opts.source, { dirs: opts.dirs, saved: config.logFolders });
   await reportFolders(opts, logs, config, say);
-  const fileCount = logs.claudeFiles.length + logs.codexFiles.length;
+  const fileCount = SOURCES.reduce((n, s) => n + logs.files[s].length, 0);
   if (fileCount === 0) {
-    const which = opts.source === "all" ? "Claude Code or Codex" : SOURCE_NAMES[opts.source];
+    const which = opts.source === "all" ? ANY_HARNESS : SOURCE_NAMES[opts.source];
     err(`\nNo ${which} logs found. Checked:`);
     for (const f of logs.folders.checked) err(`  ${tildify(f)}`);
-    if (opts.claudeDirs.length > 0 || opts.codexDirs.length > 0) {
-      err("\nCheck the paths given to --claude-dir and --codex-dir.");
+    const flagged = SOURCES.filter((s) => opts.dirs[s]?.length);
+    if (flagged.length > 0) {
+      err(`\nCheck the paths given to ${flagged.map((s) => `--${s}-dir`).join(" and ")}.`);
     } else {
-      err("\nRun Claude Code or Codex once, then try again.");
-      err("If your logs are somewhere else, pass --claude-dir or --codex-dir.");
+      err(`\nRun ${ANY_HARNESS} once, then try again.`);
+      err(`If your logs are somewhere else, pass ${DIR_FLAGS}.`);
     }
     return null;
   }
 
-  const counts = [
-    logs.claudeFiles.length > 0 ? `${int(logs.claudeFiles.length)} Claude Code` : null,
-    logs.codexFiles.length > 0 ? `${int(logs.codexFiles.length)} Codex` : null,
-  ].filter((x): x is string => x !== null);
+  const counts = SOURCES.filter((s) => logs.files[s].length > 0).map((s) => `${int(logs.files[s].length)} ${SOURCE_NAMES[s]}`);
   if (process.stderr.isTTY) process.stderr.write(dim(`Reading ${counts.join(" and ")} logs...`));
   const started = Date.now();
   const parsed = await parseFiles({
-    claudeFiles: logs.claudeFiles,
-    codexFiles: logs.codexFiles,
+    files: logs.files,
     timeZone,
     // Reads .git/config of each working directory to name its repository.
     repoResolver: createGitRepoResolver(),
@@ -118,8 +111,8 @@ async function readLocal(opts: CliOptions, say: (s?: string) => void): Promise<L
     today: new LocalClock(timeZone).local(Date.now()).day,
     counts,
     started,
-    folders: [...logs.folders.claude, ...logs.folders.codex].map(tildify),
-    files: { claude: logs.claudeFiles.length, codex: logs.codexFiles.length },
+    folders: SOURCES.flatMap((s) => logs.folders.dirs[s]).map(tildify),
+    files: Object.fromEntries(SOURCES.map((s) => [s, logs.files[s].length])) as Record<Source, number>,
   };
 }
 
@@ -182,7 +175,7 @@ async function wrap(opts: CliOptions): Promise<number> {
     out();
     out(`Your logs start on ${summary.firstDataDay}, so this covers ${summary.range.days} days.`);
     // The 30 day cleanup is a Claude Code setting. Codex keeps its logs.
-    if (opts.source !== "codex") out(
+    if (opts.source === "all" || opts.source === "claude") out(
       dim(
         'Claude Code deletes transcripts after 30 days. Set "cleanupPeriodDays" in ~/.claude/settings.json to keep more,\nor run "npx codewrapped sync" regularly to keep daily totals online.',
       ),
@@ -247,7 +240,7 @@ main().then(
   (code) => process.exit(code),
   (e: unknown) => {
     err(`codewrapped stopped on an unexpected error: ${(e as Error)?.message ?? e}`);
-    err("Run it again. If it stops at the same place, run with --source claude or --source codex to find the log that causes it.");
+    err(`Run it again. If it stops at the same place, run with ${SOURCES.map((s) => `--source ${s}`).join(" or ")} to find the log that causes it.`);
     process.exit(1);
   },
 );

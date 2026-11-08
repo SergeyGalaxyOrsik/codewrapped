@@ -7,7 +7,7 @@ const root = join(import.meta.dirname, "../fixtures/claude/projects");
 
 async function parse(timeZone: string) {
   const claudeFiles = await listJsonl(root);
-  return parseFiles({ claudeFiles, timeZone });
+  return parseFiles({ files: { claude: claudeFiles }, timeZone });
 }
 
 const day = (rows: Awaited<ReturnType<typeof parse>>["aggregates"], d: string) => {

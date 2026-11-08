@@ -1,0 +1,60 @@
+name: Add support for a coding agent
+description: Ask for an adapter for a harness codewrapped does not read yet.
+title: "Add support for <harness>"
+labels: ["harness"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        An adapter ships only after it was checked against real logs, so a sample helps a lot.
+        **Never paste prompts, code, file paths, keys or tokens.** See "Sanitized sample" below.
+  - type: input
+    id: harness
+    attributes:
+      label: Harness
+      description: Name and link.
+      placeholder: "opencode, https://opencode.ai"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `<harness> --version`.
+      placeholder: "1.17.9"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "macOS 26, Ubuntu 24.04, Windows 11"
+  - type: textarea
+    id: location
+    attributes:
+      label: Log location
+      description: |
+        Where the harness keeps sessions, and any environment variable that moves it.
+        Say whether it is JSONL, JSON files, SQLite or something else.
+      placeholder: |
+        ~/.local/share/opencode/opencode.db (SQLite), older versions ~/.local/share/opencode/storage/*.json
+        Moved by XDG_DATA_HOME.
+    validations:
+      required: true
+  - type: textarea
+    id: sample
+    attributes:
+      label: Sanitized sample
+      description: |
+        A few lines or rows from one short session: a prompt, a model reply with token usage, a tool call, a file edit.
+        Keep keys, types, timestamps, model names and token counts. Replace every message text, code, path and id with "x".
+        For JSONL, this keeps the structure and drops long strings: `jq -c 'walk(if type == "string" and length > 40 then "x" else . end)' session.jsonl | head -50`
+        Then read the result and remove anything private that is still there.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: Does it record cost? Subagents or branches? Runs started by scripts (like `claude -p`)?

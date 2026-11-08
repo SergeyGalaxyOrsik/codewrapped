@@ -76,7 +76,7 @@ Logs are found in `$CLAUDE_CONFIG_DIR`, `~/.claude`, `~/.config/claude`, `$CODEX
 | `apps/cli` | The `codewrapped` npm package |
 | `apps/api` | Hono API on Node with Postgres, deployed with Docker. See [apps/api/README.md](apps/api/README.md) |
 | `apps/web` | Next.js site. See [apps/web/README.md](apps/web/README.md) |
-| `packages/parser` | Reads Claude Code and Codex logs into daily totals |
+| `packages/parser` | One adapter per coding agent (Claude Code, Codex) that reads its logs into daily totals. To add one, see [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-harness) |
 | `packages/stats` | Summaries, archetypes, pricing. Shared by the CLI, API and site, so numbers match everywhere |
 | `packages/card` | The card, rendered with satori |
 | `packages/brand` | Colors, fonts and the mark |

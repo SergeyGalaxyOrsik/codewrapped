@@ -7,7 +7,7 @@ const root = join(import.meta.dirname, "../fixtures/codex/sessions");
 
 async function parse() {
   const codexFiles = await listJsonl(root);
-  const result = await parseFiles({ codexFiles, timeZone: "Europe/Berlin" });
+  const result = await parseFiles({ files: { codex: codexFiles }, timeZone: "Europe/Berlin" });
   expect(result.aggregates).toHaveLength(1);
   return { ...result, row: result.aggregates[0]! };
 }

@@ -1,7 +1,7 @@
 import { count, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { cliTokens, dailyStats, deviceCodes, profiles } from "../src/db/schema";
-import type { PublicProfile } from "@codewrapped/stats";
+import type { DailyAggregate, PublicProfile } from "@codewrapped/stats";
 import { day, setup, WEB } from "./helpers";
 
 const json = async <T = Record<string, unknown>>(res: Response) => (await res.json()) as T;
@@ -102,19 +102,40 @@ describe("sync", () => {
     expect(p.summary.totals.sessions).toBe(1);
   });
 
-  it("rejects bad payloads with a clear message", async () => {
+  it("skips a bad row with a clear reason and keeps the rest", async () => {
     const t = await setup();
     await t.createUser("u1", "ada");
     const token = await t.login("u1");
     const bad = { ...day("2026-11-07", "claude"), activeMask: "AAAA" };
-    const res = await t.sync(token, [bad]);
-    expect(res.status).toBe(400);
-    expect((await json<{ error: { message: string } }>(res)).error.message).toMatch(/days\.0\.activeMask/);
+    const res = await t.sync(token, [bad, day("2026-11-08", "claude")]);
+    expect(res.status).toBe(200);
+    const body = await json<{ received: number; skippedCount: number; skipped: Array<{ index: number; day: string; reason: string }> }>(res);
+    expect(body.received).toBe(1);
+    expect(body.skippedCount).toBe(1);
+    expect(body.skipped[0]).toMatchObject({ index: 0, day: "2026-11-07", reason: expect.stringMatching(/^activeMask/) });
+
+    const malformed = await t.req("POST", "/sync", { token, body: { machineId: "machine-aaaa", timeZone: "Nowhere/Land", days: [] } });
+    expect(malformed.status).toBe(400);
 
     const huge = await t.req("POST", "/sync", { token, body: "x".repeat(1024 * 1024 + 10) });
     expect(huge.status).toBe(413);
 
     expect((await t.req("POST", "/sync", { body: { machineId: "machine-aaaa", timeZone: "UTC", days: [] } })).status).toBe(401);
+  });
+
+  it("stores rows of harnesses it does not know and shows only known ones", async () => {
+    const t = await setup();
+    await t.createUser("u1", "ada");
+    const token = await t.login("u1");
+    // A harness id this server does not know, and one that is not an id at all.
+    const future = { ...day("2026-11-07", "claude", { tokens: 5000 }), source: "some-new-agent" } as unknown as DailyAggregate;
+    const badId = { ...future, source: "Bad Id!" } as unknown as DailyAggregate;
+    const res = await t.sync(token, [day("2026-11-07", "claude", { tokens: 100 }), future, badId]);
+    expect(res.status).toBe(200);
+    expect(await json(res)).toMatchObject({ received: 2, skippedCount: 1 });
+    const p = await json<PublicProfile>(await t.req("GET", "/u/ada?period=7d"));
+    expect(p.summary.totals.tokens.headline).toBe(100);
+    expect(Object.keys(p.summary.bySource)).toEqual(["claude", "codex"]);
   });
 
   it("limits requests per token", async () => {

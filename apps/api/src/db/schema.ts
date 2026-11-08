@@ -130,7 +130,8 @@ export const dailyStats = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     machineId: text("machine_id").notNull(),
-    source: text("source").$type<DailyAggregate["source"]>().notNull(),
+    // Any harness id: rows of harnesses the registry does not know yet are stored but not shown.
+    source: text("source").notNull(),
     day: date("day").notNull(),
     data: jsonb("data").$type<DailyAggregate>().notNull(),
     schemaVersion: integer("schema_version").notNull(),

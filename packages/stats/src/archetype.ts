@@ -1,4 +1,4 @@
-import type { Source } from "./types";
+import { SOURCE_NAMES, SOURCES, type Source } from "./types";
 
 export type ArchetypeMetrics = {
   activeMinutes: number;
@@ -135,10 +135,10 @@ export const ARCHETYPE_RULES: readonly Rule[] = [
     name: "Two agents",
     match: (m) => {
       if (m.activeMinutes < T.minActiveMinutes) return null;
-      const claude = m.minutesBySource.claude / m.activeMinutes;
-      const codex = m.minutesBySource.codex / m.activeMinutes;
-      return claude > T.sourceShare && codex > T.sourceShare
-        ? `Claude Code had ${pct(claude)} of your time, Codex ${pct(codex)}.`
+      const [a, b] = SOURCES.map((src) => ({ name: SOURCE_NAMES[src], share: m.minutesBySource[src] / m.activeMinutes }))
+        .sort((x, y) => y.share - x.share);
+      return a && b && a.share > T.sourceShare && b.share > T.sourceShare
+        ? `${a.name} had ${pct(a.share)} of your time, ${b.name} ${pct(b.share)}.`
         : null;
     },
   },

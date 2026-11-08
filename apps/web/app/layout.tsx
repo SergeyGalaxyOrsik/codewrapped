@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { SUPPORTED_HARNESSES } from "@codewrapped/stats";
 import type { ReactNode } from "react";
 import { SITE_URL } from "@/lib/api";
 import "./globals.css";
@@ -6,8 +7,8 @@ import "./globals.css";
 // og:title and twitter:title follow each page's title, so the landing gets this one.
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: { default: "codewrapped: a Wrapped for Claude Code and Codex", template: "%s -- codewrapped" },
-  description: "One command turns your Claude Code and Codex logs into a card: hours, tokens, repositories and tools.",
+  title: { default: "codewrapped: a Wrapped for your coding agents", template: "%s -- codewrapped" },
+  description: `One command turns your coding agent logs into a card: hours, tokens, repositories and tools. Works with ${SUPPORTED_HARNESSES}.`,
   openGraph: { siteName: "codewrapped", type: "website" },
   twitter: { card: "summary_large_image" },
 };

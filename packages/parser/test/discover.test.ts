@@ -18,11 +18,11 @@ describe("findLogFolders", () => {
     await mkdir(join(home, ".claude", "projects"), { recursive: true });
     await mkdir(join(home, ".codex", "sessions"), { recursive: true });
     const f = await findLogFolders({ CLAUDE_CONFIG_DIR: join(home, "custom") }, home);
-    expect(f.claude).toHaveLength(2);
-    expect(f.claude[0]).toMatch(/custom\/projects$/);
-    expect(f.claude[1]).toMatch(/\.claude\/projects$/);
+    expect(f.dirs.claude).toHaveLength(2);
+    expect(f.dirs.claude[0]).toMatch(/custom\/projects$/);
+    expect(f.dirs.claude[1]).toMatch(/\.claude\/projects$/);
     expect(f.checked).toContain(join(home, ".config", "claude", "projects"));
-    expect(f.codex).toHaveLength(1);
+    expect(f.dirs.codex).toHaveLength(1);
   });
 
   it("lets --claude-dir and --codex-dir replace auto-detection", async () => {
@@ -30,13 +30,10 @@ describe("findLogFolders", () => {
     await mkdir(join(home, ".claude", "projects"), { recursive: true });
     await mkdir(join(home, "elsewhere", "projects"), { recursive: true });
     await mkdir(join(home, "rollouts"), { recursive: true });
-    const f = await findLogFolders({}, home, {
-      claudeDirs: [join(home, "elsewhere")],
-      codexDirs: [join(home, "rollouts")],
-    });
-    expect(f.claude).toHaveLength(1);
-    expect(f.claude[0]).toMatch(/elsewhere\/projects$/);
-    expect(f.codex[0]).toMatch(/rollouts$/);
+    const f = await findLogFolders({}, home, { dirs: { claude: [join(home, "elsewhere")], codex: [join(home, "rollouts")] } });
+    expect(f.dirs.claude).toHaveLength(1);
+    expect(f.dirs.claude[0]).toMatch(/elsewhere\/projects$/);
+    expect(f.dirs.codex[0]).toMatch(/rollouts$/);
   });
 });
 
@@ -49,16 +46,13 @@ describe("overlapping folders", () => {
     await cp(join(fixtures, "codex"), join(home, "cx1"), { recursive: true });
     await cp(join(fixtures, "codex"), join(home, "cx2"), { recursive: true });
 
-    const once = await findLocalLogs("all", { claudeDirs: [join(home, "a")], codexDirs: [join(home, "cx1")] });
-    const many = await findLocalLogs("all", {
-      claudeDirs: [join(home, "a"), join(home, "b"), join(home, "link")],
-      codexDirs: [join(home, "cx1"), join(home, "cx2")],
-    });
+    const once = await findLocalLogs("all", { dirs: { claude: [join(home, "a")], codex: [join(home, "cx1")] } });
+    const many = await findLocalLogs("all", { dirs: { claude: [join(home, "a"), join(home, "b"), join(home, "link")], codex: [join(home, "cx1"), join(home, "cx2")] } });
     // The symlink resolves to a/, so only the copy in b/ adds files.
-    expect(many.claudeFiles).toHaveLength(once.claudeFiles.length * 2);
+    expect(many.files.claude).toHaveLength(once.files.claude.length * 2);
 
     const parse = (l: typeof once) =>
-      parseFiles({ claudeFiles: l.claudeFiles, codexFiles: l.codexFiles, timeZone: "Europe/Berlin" });
+      parseFiles({ files: l.files, timeZone: "Europe/Berlin" });
     expect((await parse(many)).aggregates).toEqual((await parse(once)).aggregates);
   });
 });
@@ -106,7 +100,7 @@ describe("auto-discovery", () => {
     await claudeHome(join(home, ".claude-personal"));
     const saved = await findLogFolders({}, home, { saved: { claude: [join(home, "work", "agent-a")] } });
     expect(saved.roots.map((r) => r.via)).toEqual(["saved", "scan"]);
-    const flagged = await findLogFolders({}, home, { claudeDirs: [join(home, "work", "agent-a")] });
+    const flagged = await findLogFolders({}, home, { dirs: { claude: [join(home, "work", "agent-a")] } });
     expect(flagged.roots.map((r) => r.via)).toEqual(["flag"]);
   });
 

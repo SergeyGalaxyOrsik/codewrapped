@@ -1,4 +1,5 @@
 import { EMPTY_MASK, unionMasks } from "./mask";
+import { rowToolCategories } from "./tools";
 import type { AutomatedActivity, DailyAggregate, ModelUsage, RepoUsage, Source } from "./types";
 
 export function emptyAutomated(): AutomatedActivity {
@@ -69,6 +70,10 @@ export function addAggregate(a: DailyAggregate, b: DailyAggregate): void {
   a.tokens.cacheRead += b.tokens.cacheRead;
   a.tokens.cacheWrite += b.tokens.cacheWrite;
   addModels(a.models, b.models);
+  // Categories before tools: a row without stored categories derives them from its tools.
+  const categories = rowToolCategories(a);
+  addCounts(categories, rowToolCategories(b));
+  a.toolCategories = categories;
   addCounts(a.tools, b.tools);
   addCounts(a.files, b.files);
   addRepos(a.repos, b.repos);

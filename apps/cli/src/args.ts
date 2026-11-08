@@ -1,5 +1,5 @@
 import { parseArgs } from "node:util";
-import { PERIODS, type Period, type SourceFilter } from "@codewrapped/stats";
+import { PERIODS, SOURCE_NAMES, SOURCES, type Period, type Source, type SourceFilter } from "@codewrapped/stats";
 
 export type Command = "wrap" | "login" | "sync" | "logout" | "help" | "version";
 
@@ -15,8 +15,8 @@ export type CliOptions = {
   json: boolean;
   dryRun: boolean;
   timeZone: string | null;
-  claudeDirs: string[];
-  codexDirs: string[];
+  /** --claude-dir, --codex-dir: folders that replace auto-detection for that harness. */
+  dirs: Partial<Record<Source, string[]>>;
   includeAutomated: boolean;
   yes: boolean;
 };
@@ -24,7 +24,8 @@ export type CliOptions = {
 export class UsageError extends Error {}
 
 const COMMANDS = new Set(["login", "sync", "logout", "help"]);
-const SOURCES = ["claude", "codex", "all"] as const;
+const SOURCE_FILTERS = [...SOURCES, "all"] as const;
+const dirFlag = (s: Source) => `${s}-dir` as const;
 const THEMES = ["light", "dark"] as const;
 
 function oneOf<T extends string>(flag: string, value: string | undefined, allowed: readonly T[], fallback: T): T {
@@ -51,8 +52,7 @@ export function parseCli(argv: string[]): CliOptions {
         json: { type: "boolean" },
         "dry-run": { type: "boolean" },
         tz: { type: "string" },
-        "claude-dir": { type: "string", multiple: true },
-        "codex-dir": { type: "string", multiple: true },
+        ...Object.fromEntries(SOURCES.map((s) => [dirFlag(s), { type: "string", multiple: true } as const])),
         "include-automated": { type: "boolean" },
         yes: { type: "boolean", short: "y" },
         help: { type: "boolean", short: "h" },
@@ -83,7 +83,7 @@ export function parseCli(argv: string[]): CliOptions {
   return {
     command,
     period: oneOf("period", values.period, PERIODS, "30d"),
-    source: oneOf("source", values.source, SOURCES, "all"),
+    source: oneOf("source", values.source, SOURCE_FILTERS, "all"),
     theme: oneOf("theme", values.theme, THEMES, "light"),
     story: values.story ?? false,
     hideFiles: values["hide-files"] ?? false,
@@ -92,12 +92,19 @@ export function parseCli(argv: string[]): CliOptions {
     json: values.json ?? false,
     dryRun: values["dry-run"] ?? false,
     timeZone: values.tz ?? null,
-    claudeDirs: values["claude-dir"] ?? [],
-    codexDirs: values["codex-dir"] ?? [],
+    dirs: Object.fromEntries(
+      SOURCES.flatMap((s) => {
+        const v = (values as Record<string, unknown>)[dirFlag(s)];
+        return Array.isArray(v) && v.length > 0 ? [[s, v as string[]]] : [];
+      }),
+    ),
     includeAutomated: values["include-automated"] ?? false,
     yes: values.yes ?? false,
   };
 }
+
+/** Pads a flag to the help column. */
+const pad = (s: string) => s.padEnd(32);
 
 export const HELP = `codewrapped -- a Wrapped for your coding agents
 
@@ -109,14 +116,13 @@ Usage
 
 Flags
   --period 7d|30d|90d|year|all    Period to show (default 30d)
-  --source claude|codex|all       Which agent to include (default all)
+  ${pad(`--source ${SOURCE_FILTERS.join("|")}`)}Which agent to include (default all)
   --hide-files                    Leave file names out (also from uploads)
   --hide-repos                    Leave repository names out (also from uploads)
   --include-automated             Count claude -p, Agent SDK and codex exec runs in hours
   --json                          Print the summary as JSON
   --tz <zone>                     Timezone for days and hours (default: system)
-  --claude-dir <path>             Only these Claude Code folders, no auto-detection (repeatable)
-  --codex-dir <path>              Only these Codex folders, no auto-detection (repeatable)
+${SOURCES.map((s) => `  ${pad(`--${dirFlag(s)} <path>`)}Only these ${SOURCE_NAMES[s]} folders, no auto-detection (repeatable)`).join("\n")}
   --theme light|dark              Card theme
   --story                         Card in story size, 1080x1920
   --out <path>                    Where to write the card

@@ -3,7 +3,7 @@ import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { z } from "zod";
-import { buildPublicProfile, PERIODS, todayIn, type Period, type PublicProfile } from "@codewrapped/stats";
+import { buildPublicProfile, isKnownSource, knownRows, PERIODS, todayIn, type DailyAggregate, type Period, type PublicProfile } from "@codewrapped/stats";
 import { webOrigins } from "./config";
 import type { Db } from "./db";
 import { cliTokens, dailyStats, DEFAULT_VISIBILITY, deviceCodes, profiles, users, type Visibility } from "./db/schema";
@@ -25,7 +25,7 @@ import {
   type Candidate,
 } from "./lib/leaderboard";
 import { flagDay } from "./lib/plausibility";
-import { HANDLE_RE, SyncBody } from "./validation";
+import { checkDays, HANDLE_RE, SyncBody } from "./validation";
 
 export type AppDeps = {
   db: Db;
@@ -232,14 +232,26 @@ export function createApp(deps: AppDeps) {
         const issue = parsed.error.issues[0];
         return fail(c, 400, "invalid_payload", `The upload was rejected at ${issue?.path.join(".") || "body"}: ${issue?.message}. Update the CLI and try again.`);
       }
-      const { machineId, timeZone, days } = parsed.data;
+      const { machineId, timeZone } = parsed.data;
+      // One bad or unknown row never costs the rest of the upload.
+      const { valid: days, skipped } = checkDays(parsed.data.days);
       const userId = c.get("userId");
       if (days.length > 0) {
         // One row per user, machine, source and day. Re-sending a day replaces it.
         await db
           .insert(dailyStats)
           .values(
-            days.map((d) => ({ userId, machineId, source: d.source, day: d.day, data: d, schemaVersion: d.schemaVersion, flag: flagDay(d), updatedAt: now() })),
+            days.map((d) => ({
+              userId,
+              machineId,
+              source: d.source,
+              day: d.day,
+              // Rows of harnesses the registry does not know are kept and only read once it does.
+              data: d as DailyAggregate,
+              schemaVersion: d.schemaVersion,
+              flag: flagDay(d as DailyAggregate),
+              updatedAt: now(),
+            })),
           )
           .onConflictDoUpdate({
             target: [dailyStats.userId, dailyStats.machineId, dailyStats.source, dailyStats.day],
@@ -253,7 +265,12 @@ export function createApp(deps: AppDeps) {
         .returning({ handle: profiles.handle });
       await bust(userId);
       boards.bust("");
-      return c.json({ received: days.length, profileUrl: profile ? `${deps.webUrl}/@${profile.handle}` : null });
+      return c.json({
+        received: days.length,
+        skipped: skipped.slice(0, 20),
+        skippedCount: skipped.length,
+        profileUrl: profile ? `${deps.webUrl}/@${profile.handle}` : null,
+      });
     },
   );
 
@@ -285,7 +302,9 @@ export function createApp(deps: AppDeps) {
       .innerJoin(users, eq(users.id, dailyStats.userId))
       .where(and(gte(dailyStats.day, start), lte(dailyStats.day, end)));
     const byUser = new Map<string, { first: (typeof rows)[number]; days: (typeof rows)[number]["data"][]; flags: Array<{ day: string; flag: string }> }>();
+    // Harnesses the registry does not know yet never count toward a board.
     for (const r of rows) {
+      if (!isKnownSource(r.data.source)) continue;
       const u = byUser.get(r.userId) ?? { first: r, days: [], flags: [] };
       u.days.push(r.data);
       if (r.flag !== null) u.flags.push({ day: r.data.day, flag: r.flag });
@@ -398,7 +417,7 @@ export function createApp(deps: AppDeps) {
       body = buildPublicProfile(
         { handle: p.handle, displayName: p.displayName, avatarUrl: p.avatarUrl, joinedAt: p.createdAt.toISOString() },
         { ...DEFAULT_VISIBILITY, ...p.visibility },
-        rows.map((r) => r.data),
+        knownRows(rows.map((r) => r.data)),
         period,
         todayIn(p.timeZone, now()),
       );

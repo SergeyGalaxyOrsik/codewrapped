@@ -1,8 +1,10 @@
-import type { DailyAggregate, RequestUsage } from "@codewrapped/stats";
-import { DayBuilder, type Session } from "./builder";
-import type { LocalClock } from "./clock";
-import { countUnknown, parseTime, readJsonl, type ParseWarnings } from "./lines";
-import { repoNameFromPath, type RepoResolver } from "./repos";
+import { open, readdir } from "node:fs/promises";
+import { basename as fileName, join, relative, resolve, sep } from "node:path";
+import { shellCategory, toolCategory, type RequestUsage } from "@codewrapped/stats";
+import type { Adapter, Candidate, DiscoverContext, Emit } from "../adapter";
+import { basename } from "../builder";
+import { dirNames, listAll } from "../files";
+import { countUnknown, parseTime, readJsonl, type ParseWarnings } from "../lines";
 
 /**
  * Claude Code transcript event types seen as of Claude Code 2.1. Only
@@ -56,7 +58,7 @@ const obj = (v: unknown): Obj | null => (v && typeof v === "object" && !Array.is
 const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
 const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 
-type PendingUsage = { t: number; model: string; u: RequestUsage; repo: string | null };
+type PendingUsage = { session: string; t: number; model: string; u: RequestUsage; cwd: string | null };
 
 function readUsage(raw: Obj): RequestUsage {
   const cacheCreation = num(raw.cache_creation_input_tokens);
@@ -111,14 +113,7 @@ function isPrompt(e: Obj): boolean {
   return true;
 }
 
-export async function parseClaude(
-  files: readonly string[],
-  clock: LocalClock,
-  warnings: ParseWarnings,
-  repoOf: RepoResolver = repoNameFromPath,
-): Promise<DailyAggregate[]> {
-  const out = new DayBuilder("claude", clock);
-  const sessions = new Map<string, Session>();
+async function parse(files: readonly string[], emit: Emit, warnings: ParseWarnings): Promise<void> {
   const lastCwd = new Map<string, string>();
   const seenEvents = new Set<string>();
   const seenToolUses = new Set<string>();
@@ -132,9 +127,9 @@ export async function parseClaude(
       countUnknown(warnings, `claude:${typeof type === "string" ? type : "(no type)"}`);
       return;
     }
-    const sessionId = str(e.sessionId);
+    const session = str(e.sessionId);
     const t = parseTime(e.timestamp);
-    if (!sessionId || t === null) return;
+    if (!session || t === null) return;
 
     // Forked and resumed sessions can copy events into a new file.
     const uuid = str(e.uuid);
@@ -148,40 +143,28 @@ export async function parseClaude(
     const entrypoint = str(e.entrypoint);
     if (entrypoint) {
       const isSdk = entrypoint.startsWith("sdk");
-      const seen = entrypoints.get(sessionId);
-      entrypoints.set(sessionId, seen === undefined ? isSdk : seen && isSdk);
+      const seen = entrypoints.get(session);
+      entrypoints.set(session, seen === undefined ? isSdk : seen && isSdk);
     }
 
-    const cwd = str(e.cwd);
-    if (cwd) lastCwd.set(sessionId, cwd);
-    let session = sessions.get(sessionId);
-    if (!session) {
-      session = { events: [], active: false, automated: false, prompts: [] };
-      sessions.set(sessionId, session);
-    }
-    const repo = repoOf(cwd ?? lastCwd.get(sessionId) ?? null);
-    session.events.push({ t, repo });
+    const ownCwd = str(e.cwd);
+    if (ownCwd) lastCwd.set(session, ownCwd);
+    const cwd = ownCwd ?? lastCwd.get(session) ?? null;
 
-    if (type === "user") {
-      if (isPrompt(e)) {
-        session.prompts.push(t);
-        session.active = true;
-      }
-      return;
-    }
-    if (type !== "assistant") return;
-
-    const message = obj(e.message);
+    const prompt = type === "user" && isPrompt(e);
+    const message = type === "assistant" ? obj(e.message) : null;
     const model = str(message?.model);
-    if (!message || !model || model === "<synthetic>") return;
-    session.active = true;
+    const reply = message !== null && model !== null && model !== "<synthetic>";
+    emit({ type: "tick", session, t, cwd, active: prompt || reply });
+    if (prompt) emit({ type: "prompt", session, t });
+    if (!reply) return;
 
     const rawUsage = obj(message.usage);
     if (rawUsage) {
       const key = `${str(message.id) ?? uuid ?? t}|${str(e.requestId) ?? ""}`;
       const u = readUsage(rawUsage);
       const prev = usage.get(key);
-      usage.set(key, prev ? { ...prev, u: maxUsage(prev.u, u) } : { t, model, u, repo });
+      usage.set(key, prev ? { ...prev, u: maxUsage(prev.u, u) } : { session, t, model, u, cwd });
     }
 
     const content = Array.isArray(message.content) ? message.content : [];
@@ -195,22 +178,103 @@ export async function parseClaude(
         if (seenToolUses.has(id)) continue;
         seenToolUses.add(id);
       }
-      out.addTool(t, name);
-      const pathFields = EDIT_TOOLS[name];
       const input = obj(block.input);
+      // A Bash call that runs grep or rg is a search. Only the first program is read.
+      const category = name === "Bash" ? shellCategory(str(input?.command)) : toolCategory(name);
+      emit({ type: "tool", session, t, name, category });
+      const pathFields = EDIT_TOOLS[name];
       if (pathFields && input) {
         const path = pathFields.map((f) => str(input[f])).find(Boolean);
-        if (path) out.addFileEdit(t, path);
+        if (path) emit({ type: "edit", session, t, file: basename(path) });
       }
     }
   };
 
   for (const file of files) await readJsonl(file, warnings, onEvent);
 
-  for (const { t, model, u, repo } of usage.values()) out.addUsage(t, model, u, repo);
-  for (const [id, session] of sessions) {
-    session.automated = entrypoints.get(id) ?? false;
-    out.addSession(session);
-  }
-  return out.result();
+  // Usage goes out once per message, after its last streamed line was seen.
+  for (const { session, t, model, u, cwd } of usage.values()) emit({ type: "usage", session, t, model, usage: u, cwd });
+  for (const [session, automated] of entrypoints) emit({ type: "session", session, automated });
 }
+
+/** True when the first lines of a file look like a Claude Code transcript. */
+async function hasClaudeEvents(file: string): Promise<boolean> {
+  let handle;
+  try {
+    handle = await open(file, "r");
+    const buf = Buffer.alloc(16 * 1024);
+    const { bytesRead } = await handle.read(buf, 0, buf.length, 0);
+    for (const line of buf.subarray(0, bytesRead).toString("utf8").split("\n").slice(0, 20)) {
+      try {
+        const e = JSON.parse(line) as Record<string, unknown>;
+        if (typeof e.sessionId === "string" && typeof e.type === "string") return true;
+      } catch {
+        // A cut-off last line, or not JSON.
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  } finally {
+    await handle?.close();
+  }
+}
+
+/** A Claude Code config folder: projects/<project>/<session>.jsonl with Claude Code events. Checks a few files. */
+export async function looksLikeClaudeHome(root: string): Promise<boolean> {
+  const projects = join(root, "projects");
+  let checked = 0;
+  for (const project of await dirNames(projects)) {
+    let files: string[];
+    try {
+      files = (await readdir(join(projects, project))).filter((f) => f.endsWith(".jsonl"));
+    } catch {
+      continue;
+    }
+    for (const f of files.slice(0, 2)) {
+      if (await hasClaudeEvents(join(projects, project, f))) return true;
+      if (++checked >= 8) return false;
+    }
+  }
+  return false;
+}
+
+const SUBDIRS = ["projects"];
+
+/**
+ * $CLAUDE_CONFIG_DIR (comma separated is allowed), ~/.claude and
+ * ~/.config/claude, saved folders, CLAUDE_CONFIG_DIR values in shell files,
+ * and folders named .claude* or claude* in ~ and ~/.config.
+ */
+function discover(ctx: DiscoverContext): Candidate[] {
+  const at = (root: string, via: Candidate["via"], verify = false): Candidate => ({
+    root,
+    dirs: SUBDIRS.map((s) => join(resolve(root), s)),
+    via,
+    verify,
+  });
+  const fromEnv = (ctx.env.CLAUDE_CONFIG_DIR ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  return [
+    ...fromEnv.map((r) => at(r, "env")),
+    ...[join(ctx.home, ".claude"), join(ctx.home, ".config", "claude")].map((r) => at(r, "default")),
+    ...ctx.saved.map((r) => at(r, "saved")),
+    ...ctx.shellValues("CLAUDE_CONFIG_DIR").map((r) => at(r, "shell", true)),
+    ...ctx.homeFolders.filter((p) => /^\.?claude/i.test(fileName(p))).map((r) => at(r, "scan", true)),
+  ];
+}
+
+export const claude: Adapter = {
+  id: "claude",
+  shellVars: ["CLAUDE_CONFIG_DIR"],
+  subdirs: SUBDIRS,
+  discover,
+  looksLike: looksLikeClaudeHome,
+  listFiles: listAll,
+  // projects/<project>/<id>.jsonl, not subagent transcripts deeper down.
+  countSessions: (dirs, files) =>
+    files.filter((f) => {
+      const dir = dirs.find((d) => f.startsWith(`${d}${sep}`));
+      return dir !== undefined && relative(dir, f).split(sep).length === 2;
+    }).length,
+  parse,
+};

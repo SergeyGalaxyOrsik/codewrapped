@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { site } from "@codewrapped/brand";
+import { SUPPORTED_HARNESSES } from "@codewrapped/stats";
 import { AccountCta } from "@/components/Account";
 import { BoardTable } from "@/components/BoardTable";
 import { Card } from "@/components/Card";
@@ -127,8 +128,18 @@ const faq: Array<[string, ReactNode]> = [
     </>,
   ],
   [
-    "Does it work with Cursor?",
-    <>Not yet. It reads Claude Code logs, including Claude Code in VS Code, and Codex logs from the CLI and the desktop app.</>,
+    "Which coding agents does it read?",
+    <>
+      {SUPPORTED_HARNESSES}: Claude Code in the terminal and in VS Code, Codex from the CLI and the desktop app. Each agent is a small adapter, added
+      once it is checked against real logs. To ask for yours,{" "}
+      <a
+        href={`${site.repo}/issues/new?template=harness.yml`}
+        className="text-fg underline decoration-border underline-offset-4 hover:decoration-fg"
+      >
+        open an issue
+      </a>{" "}
+      with where it keeps its logs.
+    </>,
   ],
   [
     "Are you affiliated with Anthropic or OpenAI?",
@@ -159,7 +170,10 @@ export default async function Home() {
               Your month with coding agents, on one card.
             </h1>
             <p className="cw-enter max-w-[42ch] text-[17px] leading-relaxed text-muted" style={{ "--i": 1 } as React.CSSProperties}>
-              Hours, tokens and repositories from your Claude Code and Codex logs. Read locally, uploaded only if you sign in.
+              Hours, tokens and repositories from your coding agents. Read locally, uploaded only if you sign in.
+            </p>
+            <p className="cw-enter text-[14px] text-muted" style={{ "--i": 1 } as React.CSSProperties}>
+              Works with {SUPPORTED_HARNESSES}.
             </p>
             <div className="cw-enter" style={{ "--i": 2 } as React.CSSProperties}>
               <CopyCommand />

@@ -131,14 +131,24 @@ export async function sync(input: SyncInput, out: (s?: string) => void): Promise
   }
 
   let profileUrl: string | null = null;
+  const skipped: Array<{ day: string | null; source: string | null; reason: string }> = [];
+  let skippedCount = 0;
   try {
     for (const [i, c] of chunks.entries()) {
       if (chunks.length > 1) out(dim(`Uploading part ${i + 1} of ${chunks.length}...`));
-      const res = await api<{ received: number; profileUrl: string | null }>(base, "POST", "/sync", {
+      // Older servers send neither skipped field.
+      const res = await api<{
+        received: number;
+        profileUrl: string | null;
+        skipped?: Array<{ day: string | null; source: string | null; reason: string }>;
+        skippedCount?: number;
+      }>(base, "POST", "/sync", {
         token: auth.token,
         body: { machineId: config.machineId, timeZone: input.timeZone, days: c },
       });
       profileUrl = res.profileUrl;
+      skipped.push(...(res.skipped ?? []));
+      skippedCount += res.skippedCount ?? 0;
     }
   } catch (e) {
     if (e instanceof ApiError) {
@@ -153,5 +163,9 @@ export async function sync(input: SyncInput, out: (s?: string) => void): Promise
   await saveConfig(config);
   out(`Uploaded ${int(new Set(days.map((d) => d.day)).size)} days, ${days[0]!.day} to ${lastDay}.`);
   out(`Your page: ${bold(profileUrl ?? `${webUrlFor(base)}/@${auth.handle}`)}`);
+  if (skippedCount > 0) {
+    out(dim(`The server skipped ${int(skippedCount)} of them. Update the CLI, and if it keeps happening, open an issue with these lines:`));
+    for (const x of skipped.slice(0, 5)) out(dim(`  ${x.day ?? "?"} ${x.source ?? "?"}: ${x.reason}`));
+  }
   return 0;
 }

@@ -24,6 +24,14 @@ describe("cardData", () => {
     expect(d.stats[0]).toEqual({ value: "2 h", label: "with agents" });
   });
 
+  it("splits the hero by harness when more than one was used", () => {
+    const s = cases.big!.summary;
+    const label = cardData(s).heroLabel;
+    expect(label).toMatch(/^Claude Code \d+%, Codex \d+%$/);
+    const shares = [...label.matchAll(/(\d+)%/g)].map((m) => Number(m[1]));
+    expect(Math.abs(shares.reduce((a, b) => a + b, 0) - 100)).toBeLessThanOrEqual(1);
+  });
+
   it("lists repositories by tokens, and files when repositories are hidden", () => {
     const s = cases.short!.summary;
     expect(cardData(s).ranked).toEqual({ title: "Most edited", rows: expect.any(Array) });
