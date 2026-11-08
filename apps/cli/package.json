@@ -1,7 +1,7 @@
 {
   "name": "codewrapped",
   "version": "0.3.0",
-  "description": "A Wrapped for coding agents. Reads local Claude Code, Codex, Pi, opencode, ZCode and Cursor logs and shows your stats.",
+  "description": "A Wrapped for coding agents. Reads local Claude Code, Codex, Pi, opencode, ZCode, Cursor and oh-my-pi logs and shows your stats.",
   "keywords": [
     "claude-code",
     "codex",
@@ -9,6 +9,7 @@
     "opencode",
     "zcode",
     "cursor",
+    "oh-my-pi",
     "wrapped",
     "stats",
     "cli",

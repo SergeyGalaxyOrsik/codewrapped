@@ -131,7 +131,7 @@ const faq: Array<[string, ReactNode]> = [
     "Which coding agents does it read?",
     <>
       {SUPPORTED_HARNESSES}: Claude Code in the terminal and in VS Code, Codex from the CLI and the desktop app, Pi, opencode, ZCode from the CLI and
-      the desktop app, and Cursor's agent chats. Pi, opencode, ZCode and Cursor are in beta until more people have checked their numbers. Each agent is a small adapter, added once it is checked against real
+      the desktop app, Cursor's agent chats, and oh-my-pi. Pi, opencode, ZCode, Cursor and oh-my-pi are in beta until more people have checked their numbers. Each agent is a small adapter, added once it is checked against real
       logs. To ask for yours or report a wrong number,{" "}
       <a
         href={`${site.repo}/issues/new?template=harness.yml`}

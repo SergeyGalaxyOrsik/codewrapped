@@ -88,6 +88,17 @@ body:
       options:
         - label: I compared the numbers with my own sense of the week.
         - label: I attached the field names.
+  - type: checkboxes
+    id: omp
+    attributes:
+      label: oh-my-pi users
+      description: |
+        oh-my-pi support was written from oh-my-pi's source and is not checked against other people's files yet.
+        Compare `npx codewrapped --source omp --period 7d` with `omp stats` and say what differs.
+        A few sanitized lines help: `head -n 20` of one file in ~/.omp/agent/sessions/, then replace text, paths and ids with "x".
+      options:
+        - label: I compared the numbers with omp stats.
+        - label: I attached sanitized session lines.
   - type: textarea
     id: notes
     attributes:

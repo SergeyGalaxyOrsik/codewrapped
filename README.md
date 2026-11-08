@@ -1,6 +1,6 @@
 # codewrapped
 
-Your month with coding agents, on one card. One command reads your coding agent logs on your computer and makes a shareable card: tokens, hours, repositories, tools and when you work. Works with Claude Code, Codex, Pi (beta), opencode (beta), ZCode (beta) and Cursor (beta).
+Your month with coding agents, on one card. One command reads your coding agent logs on your computer and makes a shareable card: tokens, hours, repositories, tools and when you work. Works with Claude Code, Codex, Pi (beta), opencode (beta), ZCode (beta), Cursor (beta) and oh-my-pi (beta).
 
 ```sh
 npx codewrapped
@@ -26,12 +26,12 @@ Run the command and you get `codewrapped.png` and a summary in the terminal:
 
 ## Private by default
 
-- **What it reads:** session logs in `~/.claude`, `~/.codex`, `~/.pi/agent`, `~/.local/share/opencode`, `~/.zcode/cli/db`, Cursor's chat database and any other Claude Code or Codex folders it finds (see [SECURITY.md](SECURITY.md) for exactly where it looks), and from `.git/config` only the repository name from the remote URL, never credentials.
+- **What it reads:** session logs in `~/.claude`, `~/.codex`, `~/.pi/agent`, `~/.local/share/opencode`, `~/.zcode/cli/db`, Cursor's chat database, `~/.omp/agent` and any other Claude Code or Codex folders it finds (see [SECURITY.md](SECURITY.md) for exactly where it looks), and from `.git/config` only the repository name from the remote URL, never credentials.
 - **What it counts:** time, tokens, tool calls, file and repository names.
 - **What it never keeps:** your prompts, your code, full paths.
 - **Without an account:** it makes zero network requests.
 
-Several Claude Code accounts, such as `~/.claude` and `~/.claude-work`, are found and added up automatically. Folders elsewhere: pass `--claude-dir`, `--codex-dir`, `--pi-dir`, `--opencode-dir`, `--zcode-dir` or `--cursor-dir`. Several computers: run `npx codewrapped sync` on each and the totals add up on your profile.
+Several Claude Code accounts, such as `~/.claude` and `~/.claude-work`, are found and added up automatically. Folders elsewhere: pass `--claude-dir`, `--codex-dir`, `--pi-dir`, `--opencode-dir`, `--zcode-dir`, `--cursor-dir` or `--omp-dir`. Several computers: run `npx codewrapped sync` on each and the totals add up on your profile.
 
 ## Keep your history
 
@@ -49,7 +49,7 @@ The first sync shows what will be uploaded and asks before sending. `npx codewra
 
 ```
 --period 7d|30d|90d|year|all    Period to show (default 30d)
---source claude|codex|pi|opencode|zcode|cursor|all
+--source claude|codex|pi|opencode|zcode|cursor|omp|all
                                 Which agent to include
 --theme light|dark              Card theme
 --story                         Story size card, 1080x1920
@@ -57,7 +57,7 @@ The first sync shows what will be uploaded and asks before sending. `npx codewra
 --hide-files, --hide-repos      Leave names out of the card and uploads
 --include-automated             Count claude -p, Agent SDK and codex exec runs in hours
 --json                          Print the summary as JSON
---claude-dir, --codex-dir, --pi-dir, --opencode-dir, --zcode-dir, --cursor-dir
+--claude-dir, --codex-dir, --pi-dir, --opencode-dir, --zcode-dir, --cursor-dir, --omp-dir
                                 Read logs from these folders instead
 ```
 
@@ -78,7 +78,7 @@ Logs are found in `$CLAUDE_CONFIG_DIR`, `~/.claude`, `~/.config/claude`, `$CODEX
 | `apps/cli` | The `codewrapped` npm package |
 | `apps/api` | Hono API on Node with Postgres, deployed with Docker. See [apps/api/README.md](apps/api/README.md) |
 | `apps/web` | Next.js site. See [apps/web/README.md](apps/web/README.md) |
-| `packages/parser` | One adapter per coding agent (Claude Code, Codex, Pi, opencode, ZCode, Cursor) that reads its logs into daily totals. To add one, see [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-harness) |
+| `packages/parser` | One adapter per coding agent (Claude Code, Codex, Pi, opencode, ZCode, Cursor, oh-my-pi) that reads its logs into daily totals. To add one, see [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-harness) |
 | `packages/stats` | Summaries, archetypes, pricing. Shared by the CLI, API and site, so numbers match everywhere |
 | `packages/card` | The card, rendered with satori |
 | `packages/brand` | Colors, fonts and the mark |
