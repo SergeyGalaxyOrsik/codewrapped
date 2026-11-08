@@ -10,8 +10,10 @@ export type Config = {
   machineId: string;
   /** Set after the user agrees to the first upload. */
   syncConsentAt?: string;
-  /** Last local day uploaded, per API. */
+  /** Last local day uploaded, per API. Written for older CLI versions; this one reads lastSyncedDays. */
   lastSyncedDay?: Record<string, string>;
+  /** Last local day uploaded, per API and harness. A harness without one uploads its whole history. */
+  lastSyncedDays?: Record<string, Partial<Record<Source, string>>>;
   /** Account folders with logs found on earlier runs. Read again by later runs and sync. Never uploaded. */
   logFolders?: Partial<Record<Source, string[]>>;
 };

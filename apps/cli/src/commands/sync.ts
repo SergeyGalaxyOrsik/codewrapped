@@ -1,7 +1,7 @@
 import { createInterface } from "node:readline/promises";
-import { addDays, type DailyAggregate } from "@codewrapped/stats";
+import { addDays, type DailyAggregate, type Source } from "@codewrapped/stats";
 import { api, ApiError } from "../api";
-import { apiUrl, loadAuth, loadConfig, saveConfig, webUrlFor } from "../config";
+import { apiUrl, loadAuth, loadConfig, saveConfig, webUrlFor, type Config } from "../config";
 import { bold, dim, int } from "../ui";
 
 /** Claude Code deletes old transcripts, so days this old may be incomplete on disk. */
@@ -14,10 +14,24 @@ const MAX_CHUNK_DAYS = 400;
  * may have grown since. Older days that were already synced are left alone,
  * so a day that is now partly deleted locally never replaces a complete one.
  */
-export function daysToUpload(days: DailyAggregate[], lastSyncedDay: string | undefined, today: string): DailyAggregate[] {
-  if (!lastSyncedDay) return days;
+export function daysToUpload(days: DailyAggregate[], lastSynced: Partial<Record<Source, string>> | undefined, today: string): DailyAggregate[] {
   const safeFrom = addDays(today, -SAFE_DAYS);
-  return days.filter((d) => d.day > lastSyncedDay || d.day >= safeFrom);
+  return days.filter((d) => {
+    // A harness never synced from here, such as one this CLI version just learned to read, sends all its days.
+    const last = lastSynced?.[d.source];
+    return !last || d.day > last || d.day >= safeFrom;
+  });
+}
+
+/**
+ * Last synced day per harness for one API. Configs from 0.1 kept one day for
+ * all harnesses, and back then only Claude Code and Codex were synced.
+ */
+export function syncedDays(config: Config, base: string): Partial<Record<Source, string>> | undefined {
+  const perSource = config.lastSyncedDays?.[base];
+  if (perSource) return perSource;
+  const old = config.lastSyncedDay?.[base];
+  return old ? { claude: old, codex: old } : undefined;
 }
 
 /** Leaves out what the user chose not to upload. */
@@ -93,7 +107,7 @@ export async function sync(input: SyncInput, out: (s?: string) => void): Promise
   const base = apiUrl();
   const config = await loadConfig();
   const days = stripForUpload(
-    daysToUpload(input.aggregates, config.lastSyncedDay?.[base], input.today),
+    daysToUpload(input.aggregates, syncedDays(config, base), input.today),
     input,
   ).sort((a, b) => a.day.localeCompare(b.day) || a.source.localeCompare(b.source));
   const chunks = chunk(days);
@@ -159,6 +173,9 @@ export async function sync(input: SyncInput, out: (s?: string) => void): Promise
   }
 
   const lastDay = days[days.length - 1]!.day;
+  const marks = { ...syncedDays(config, base) };
+  for (const d of days) if (!marks[d.source] || d.day > marks[d.source]!) marks[d.source] = d.day;
+  config.lastSyncedDays = { ...config.lastSyncedDays, [base]: marks };
   config.lastSyncedDay = { ...config.lastSyncedDay, [base]: lastDay };
   await saveConfig(config);
   out(`Uploaded ${int(new Set(days.map((d) => d.day)).size)} days, ${days[0]!.day} to ${lastDay}.`);
