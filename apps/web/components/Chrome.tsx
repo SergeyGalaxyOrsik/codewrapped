@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { markDataUri, site } from "@codewrapped/brand";
+import { AccountNav } from "./Account";
 
 export function Wordmark({ size = 20 }: { size?: number }) {
   return (
@@ -14,6 +15,7 @@ export function Wordmark({ size = 20 }: { size?: number }) {
   );
 }
 
+/** `right` is what signed-out visitors see; signed-in people get a link to their own page there. */
 export function Header({ right }: { right?: ReactNode }) {
   return (
     <header className="mx-auto flex w-full max-w-5xl items-center justify-between gap-3 px-4 py-5 sm:px-6">
@@ -22,7 +24,7 @@ export function Header({ right }: { right?: ReactNode }) {
         <Link href="/leaderboard" className="rounded-[8px] px-3 py-2 text-muted hover:text-fg">
           Leaderboard
         </Link>
-        {right}
+        <AccountNav signedOut={right} />
       </nav>
     </header>
   );
@@ -63,7 +65,4 @@ export function Footer() {
   );
 }
 
-export const buttonPrimary =
-  "inline-flex items-center justify-center whitespace-nowrap rounded-[8px] bg-fg px-4 py-2 text-[14px] font-medium text-bg transition-opacity hover:opacity-85 disabled:opacity-50";
-export const buttonSecondary =
-  "inline-flex items-center justify-center whitespace-nowrap rounded-[8px] border border-border px-4 py-2 text-[14px] font-medium text-fg hover:bg-surface disabled:opacity-50";
+export { buttonPrimary, buttonSecondary } from "./buttons";

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { site } from "@codewrapped/brand";
+import { AccountCta } from "@/components/Account";
 import { BoardTable } from "@/components/BoardTable";
 import { Card } from "@/components/Card";
 import { Footer, Header } from "@/components/Chrome";
@@ -223,7 +224,7 @@ export default async function Home() {
               <span className="text-fg">{site.host}/@you</span> and a spot on the leaderboard if you want one.
             </p>
             <div>
-              <SignInButton returnTo="/settings" />
+              <AccountCta signedOut={<SignInButton returnTo="/settings" />} />
             </div>
           </div>
           <ol className="flex flex-col rounded-[12px] border border-border">

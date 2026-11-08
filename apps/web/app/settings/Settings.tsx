@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { DEFAULT_VISIBILITY, formatInt, type Visibility } from "@codewrapped/stats";
 import { buttonPrimary, buttonSecondary } from "@/components/Chrome";
+import { setAccount } from "@/components/Account";
 import { SignInButton } from "@/components/SignInButton";
 import { apiCall, signOut } from "@/lib/api";
 
@@ -93,11 +94,15 @@ export function Settings() {
   const load = useCallback(async () => {
     const res = await apiCall<Me>("GET", "/me");
     if (!res.ok) {
-      if (res.status === 401) setMe("signed-out");
+      if (res.status === 401) {
+        setMe("signed-out");
+        setAccount(null);
+      }
       else setNotice(res.error.message);
       return;
     }
     setMe(res.data);
+    setAccount({ handle: res.data.profile.handle, avatarUrl: res.data.profile.avatarUrl });
     setHandle(res.data.profile.handle);
     setDisplayName(res.data.profile.displayName ?? "");
     setXHandle(res.data.profile.xHandle ?? "");
@@ -335,6 +340,7 @@ export function Settings() {
               if (res.ok) {
                 setNotice("Your account is deleted.");
                 setMe("signed-out");
+                setAccount(null);
               } else setNotice(res.error.message);
             }}
           />
@@ -348,6 +354,7 @@ export function Settings() {
           onClick={async () => {
             await signOut();
             setMe("signed-out");
+            setAccount(null);
           }}
         >
           Sign out
