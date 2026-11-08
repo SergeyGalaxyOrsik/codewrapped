@@ -1,4 +1,4 @@
-import { formatDuration, harnessSplit, WEEKDAYS, type Summary } from "@codewrapped/stats";
+import { describeAutomated, formatDuration, harnessSplit, WEEKDAYS, type Summary } from "@codewrapped/stats";
 import { bold, compact, dim, hours, int, pad, padStart, ribbon, shortName, usd } from "./ui";
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
@@ -80,10 +80,9 @@ export function formatSummary(s: Summary): string {
     lines.push(dim(`          ${compact(t.unpricedTokens)} tokens from models with no known price are not in the cost.`));
   }
   const auto = t.automated;
-  if (!auto.included && auto.sessions > 0) {
-    lines.push(
-      dim(`  Not in hours: ${hours(auto.addedMinutes)} of automated runs (${plural(auto.sessions, "session")}). Add --include-automated to count them.`),
-    );
+  if (auto.sessions > 0) {
+    lines.push(dim(`  ${describeAutomated(auto)}`));
+    if (!auto.included) lines.push(dim("  Add --include-automated to count them."));
   }
   lines.push("");
   lines.push(`  ${bold(`${s.archetype.name}.`)} ${s.archetype.sentence}`);

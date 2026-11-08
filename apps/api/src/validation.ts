@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MASK_BASE64_LENGTH, SOURCES, decodeMask } from "@codewrapped/stats";
+import { MASK_BASE64_LENGTH, decodeMask, type DailyAggregate } from "@codewrapped/stats";
 
 const count = z.number().finite().nonnegative().max(1e13);
 const name = z.string().min(1).max(200);
@@ -22,8 +22,11 @@ const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((d) => !Number.isNaN(
 
 export const DailyAggregateSchema = z.object({
   day,
-  // Only harnesses with a shipped adapter. Deploy the API before a CLI that sends a new one.
-  source: z.enum(SOURCES),
+  /**
+   * Any harness id. Rows of harnesses the registry does not know are stored
+   * and shown once it does, so the CLI and the API can ship in any order.
+   */
+  source: z.string().regex(/^[a-z0-9-]{1,32}$/),
   sessions: count,
   messages: count,
   activeMask: mask,
@@ -35,6 +38,10 @@ export const DailyAggregateSchema = z.object({
     .record(name, z.object({ tokens: count, cacheRead: count, costUsd: count.nullable() }))
     .refine((r) => Object.keys(r).length <= 100, "too many models"),
   tools: counts,
+  toolCategories: z
+    .record(name, count)
+    .refine((r) => Object.keys(r).length <= 20, "too many categories")
+    .optional(),
   files: counts,
   repos: z
     .record(name, z.object({ minutes: count, tokens: count }))
@@ -61,7 +68,35 @@ export const SyncBody = z.object({
       return false;
     }
   }, "not a timezone"),
-  days: z.array(DailyAggregateSchema).max(400),
+  /** Checked one by one in the handler: a bad row is skipped, never the whole upload. */
+  days: z.array(z.unknown()).max(400),
 });
+
+/** A synced row. The source may be a harness this server does not know yet. */
+export type SyncedDay = Omit<DailyAggregate, "source"> & { source: string };
+
+export type SkippedDay = { index: number; day: string | null; source: string | null; reason: string };
+
+/** Splits uploaded rows into valid ones and skipped ones with the first problem of each. */
+export function checkDays(days: unknown[]): { valid: SyncedDay[]; skipped: SkippedDay[] } {
+  const valid: SyncedDay[] = [];
+  const skipped: SkippedDay[] = [];
+  days.forEach((raw, index) => {
+    const parsed = DailyAggregateSchema.safeParse(raw);
+    if (parsed.success) {
+      valid.push(parsed.data as SyncedDay);
+      return;
+    }
+    const r = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+    const issue = parsed.error.issues[0];
+    skipped.push({
+      index,
+      day: typeof r.day === "string" ? r.day.slice(0, 10) : null,
+      source: typeof r.source === "string" ? r.source.slice(0, 32) : null,
+      reason: `${issue?.path.join(".") || "row"}: ${issue?.message ?? "invalid"}`,
+    });
+  });
+  return { valid, skipped };
+}
 
 export const HANDLE_RE = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/;

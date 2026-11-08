@@ -1,6 +1,6 @@
 import { open, readdir } from "node:fs/promises";
 import { basename as fileName, join, relative, resolve, sep } from "node:path";
-import { toolCategory, type RequestUsage } from "@codewrapped/stats";
+import { shellCategory, toolCategory, type RequestUsage } from "@codewrapped/stats";
 import type { Adapter, Candidate, DiscoverContext, Emit } from "../adapter";
 import { basename } from "../builder";
 import { dirNames, listAll } from "../files";
@@ -178,9 +178,11 @@ async function parse(files: readonly string[], emit: Emit, warnings: ParseWarnin
         if (seenToolUses.has(id)) continue;
         seenToolUses.add(id);
       }
-      emit({ type: "tool", session, t, name, category: toolCategory(name) });
-      const pathFields = EDIT_TOOLS[name];
       const input = obj(block.input);
+      // A Bash call that runs grep or rg is a search. Only the first program is read.
+      const category = name === "Bash" ? shellCategory(str(input?.command)) : toolCategory(name);
+      emit({ type: "tool", session, t, name, category });
+      const pathFields = EDIT_TOOLS[name];
       if (pathFields && input) {
         const path = pathFields.map((f) => str(input[f])).find(Boolean);
         if (path) emit({ type: "edit", session, t, file: basename(path) });

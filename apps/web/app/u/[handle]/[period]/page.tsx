@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { formatCompact, formatHours, formatInt, formatShare, formatUsd, harnessSplit, PERIODS, type Period, type PublicProfile } from "@codewrapped/stats";
+import { describeAutomated, formatCompact, formatHours, formatInt, formatShare, formatUsd, harnessSplit, PERIODS, type Period, type PublicProfile } from "@codewrapped/stats";
 import { formatRange, periodLabel } from "@codewrapped/card/element";
 import { Calendar } from "@/components/Calendar";
 import { Card } from "@/components/Card";
@@ -153,7 +153,7 @@ export default async function ProfilePage({ params }: Params) {
             </div>
             {t.automated.sessions > 0 && (
               <p className="text-[14px] text-muted">
-                Not in hours: +{formatHours(t.automated.addedMinutes)} of automated runs from {formatInt(t.automated.sessions)} sessions (claude -p, Agent SDK, codex exec).
+                {describeAutomated(t.automated)} These are claude -p, Agent SDK and codex exec runs.
               </p>
             )}
             {s.models && s.models.length > 0 && (

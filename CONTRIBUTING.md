@@ -39,7 +39,7 @@ Events (`HarnessEvent`):
 - `tick`: anything that happened at a time, with the `cwd`. `active: true` for a prompt or model reply. The session timeline is built from ticks.
 - `prompt`: a prompt a person sent.
 - `usage`: one model request, split into input, output, cache read and cache write. Pass `costUsd` when the harness records it; it wins over the price table.
-- `tool`: one call, with the raw name and `toolCategory(name)`. If the harness has tool names the table in `packages/stats/src/tools.ts` does not know, add them there.
+- `tool`: one call, with the raw name and a category: edit, read, search, shell, web, plan, subagent, mcp or other. Use `toolCategory(name)`, and `shellCategory(command)` for shell calls so a `grep` or `rg` counts as search. If the harness has tool names the table in `packages/stats/src/tools.ts` does not know, add them there. Tools left in "other" never show in top tools.
 - `edit`: one file edit, basename only.
 
 Rules:
@@ -57,7 +57,7 @@ Add hand-written fixtures under `packages/parser/fixtures/<id>/` and tests next 
 
 Run the CLI on your own logs (`pnpm cli --source <id> --json`) and compare a few days with what the harness itself reports.
 
-Deploy the API before releasing a CLI with a new `id`: the API rejects rows from harnesses it does not know.
+The CLI and the API can ship in any order: the API stores rows of any harness id and shows a harness once it is in `SOURCES`.
 
 ### Prices
 

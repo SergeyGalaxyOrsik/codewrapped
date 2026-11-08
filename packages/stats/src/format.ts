@@ -68,3 +68,21 @@ export function formatShare(share: number): string {
   if (share > 0 && share < 0.005) return "<1%";
   return `${Math.round(share * 100)}%`;
 }
+
+/**
+ * Automated runs (claude -p, Agent SDK, codex exec) in one sentence, naming
+ * both measures: their own wall-clock time, and the part of it outside
+ * interactive sessions, which is what they would add to the hours.
+ */
+export function describeAutomated(a: {
+  included: boolean;
+  sessions: number;
+  activeMinutes: number;
+  addedMinutes: number;
+}): string {
+  const own = `${formatHours(a.activeMinutes)} of their own wall-clock time`;
+  const added = `${formatHours(a.addedMinutes)} of it outside your interactive sessions`;
+  return a.included
+    ? `Hours include automated runs: ${plural(a.sessions, "session")}, ${own}, ${added}.`
+    : `Automated runs, not in hours: ${plural(a.sessions, "session")}, ${own}, ${added}.`;
+}

@@ -1,6 +1,6 @@
 import { readdir } from "node:fs/promises";
 import { basename as fileName, join, resolve } from "node:path";
-import { toolCategory } from "@codewrapped/stats";
+import { shellCategory, toolCategory, type ToolCategory } from "@codewrapped/stats";
 import type { Adapter, Candidate, DiscoverContext, Emit } from "../adapter";
 import { basename } from "../builder";
 import { dirNames, listAll } from "../files";
@@ -71,13 +71,16 @@ async function parse(files: readonly string[], emit: Emit, warnings: ParseWarnin
     const ensureThread = (): string => (thread ??= startThread(file, null, null));
 
     const onToolCall = (p: Obj, t: number, session: string) => {
-      const addTool = (name: string) => emit({ type: "tool", session, t, name, category: toolCategory(name) });
+      const addTool = (name: string, category: ToolCategory = toolCategory(name)) => emit({ type: "tool", session, t, name, category });
+      /** exec_command takes a string, shell and local_shell an argv array. Only the first program is read. */
+      const shell = (name: string, cmd: unknown) =>
+        addTool(name, shellCategory(typeof cmd === "string" ? cmd : Array.isArray(cmd) ? cmd.filter((c) => typeof c === "string").join(" ") : null));
       const addPatch = (text: string) => {
         for (const path of patchFiles(text)) emit({ type: "edit", session, t, file: basename(path) });
       };
       const kind = p.type;
       const name = str(p.name);
-      if (kind === "local_shell_call") return addTool("shell");
+      if (kind === "local_shell_call") return shell("shell", obj(p.action)?.command);
       if (kind === "custom_tool_call") {
         const input = typeof p.input === "string" ? p.input : "";
         if (name === "exec") {
@@ -101,6 +104,8 @@ async function parse(files: readonly string[], emit: Emit, warnings: ParseWarnin
         addPatch(command.slice(1).join("\n"));
         return;
       }
+      if (name === "exec_command") return shell(name, args?.cmd);
+      if (name === "shell" || name === "shell_command") return shell(name, args?.command);
       addTool(name);
       if (name === "apply_patch") addPatch(str(args?.input) ?? (typeof p.arguments === "string" ? p.arguments : ""));
     };

@@ -2,11 +2,12 @@ import { pickArchetype, type Archetype } from "./archetype";
 import { addCounts, addModels, addRepos, mergeAggregates } from "./merge";
 import { addDays, daysBetween, periodStart, weekdayOf } from "./days";
 import { countMinutes, decodeMask, emptyMask, hoursOf, orInto, type MinuteMask } from "./mask";
-import { toolCategories, type ToolCategory } from "./tools";
+import { emptyToolCategories, rowToolCategories, toolCategory, type ToolCategory } from "./tools";
 import {
   SOURCE_NAMES,
   SOURCES,
   headlineTokens,
+  knownRows,
   type DailyAggregate,
   type ModelUsage,
   type Period,
@@ -154,7 +155,7 @@ const round2 = (x: number) => Math.round(x * 100) / 100;
 
 export function summarize(rows: readonly DailyAggregate[], opts: SummaryOptions): Summary {
   const source = opts.source ?? "all";
-  const all = mergeAggregates(rows.filter((r) => source === "all" || r.source === source));
+  const all = mergeAggregates(knownRows(rows).filter((r) => source === "all" || r.source === source));
 
   const firstDataDay = all.length > 0 ? all[0]!.day : null;
   const nominalStart = periodStart(opts.period, opts.today);
@@ -169,6 +170,7 @@ export function summarize(rows: readonly DailyAggregate[], opts: SummaryOptions)
   const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, headline: 0 };
   const models: Record<string, ModelUsage> = {};
   const tools: Record<string, number> = {};
+  const categories = emptyToolCategories();
   const files: Record<string, number> = {};
   const repos: Record<string, RepoUsage> = {};
   const hours = new Array<number>(24).fill(0);
@@ -224,6 +226,7 @@ export function summarize(rows: readonly DailyAggregate[], opts: SummaryOptions)
     tokens.cacheWrite += r.tokens.cacheWrite;
     addModels(models, r.models);
     addCounts(tools, r.tools);
+    addCounts(categories, rowToolCategories(r));
     addCounts(files, r.files);
     addRepos(repos, r.repos);
     if (include) {
@@ -287,7 +290,6 @@ export function summarize(rows: readonly DailyAggregate[], opts: SummaryOptions)
     })
     .sort((a, b) => b.tokens - a.tokens);
 
-  const categories = toolCategories(tools);
   const toolCalls = Object.values(categories).reduce((a, b) => a + b, 0);
   const fileEdits = Object.values(files).reduce((a, b) => a + b, 0);
   const topFiles = top(files, 5);
@@ -348,7 +350,8 @@ export function summarize(rows: readonly DailyAggregate[], opts: SummaryOptions)
     toolCategories: categories,
     models: modelList,
     topFiles: opts.hideFiles ? [] : topFiles,
-    topTools: top(tools, 5),
+    // Uncategorized tools never rank: the list is about what the agent did.
+    topTools: top(Object.fromEntries(Object.entries(tools).filter(([name]) => toolCategory(name) !== "other")), 5),
     topRepos: opts.hideRepos
       ? []
       : Object.entries(repos)
@@ -371,7 +374,7 @@ export function summarize(rows: readonly DailyAggregate[], opts: SummaryOptions)
  */
 export function activityCalendar(rows: readonly DailyAggregate[]): Array<{ day: string; minutes: number }> {
   const byDay = new Map<string, MinuteMask>();
-  for (const r of rows) {
+  for (const r of knownRows(rows)) {
     let m = byDay.get(r.day);
     if (!m) {
       m = emptyMask();

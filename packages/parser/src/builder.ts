@@ -8,6 +8,7 @@ import {
   type MinuteMask,
   type RequestUsage,
   type Source,
+  type ToolCategory,
 } from "@codewrapped/stats";
 import type { LocalClock } from "./clock";
 
@@ -64,9 +65,11 @@ export class DayBuilder {
     return m;
   }
 
-  addTool(ms: number, name: string): void {
+  addTool(ms: number, name: string, category: ToolCategory): void {
     const b = this.at(ms);
     b.tools[name] = (b.tools[name] ?? 0) + 1;
+    const c = (b.toolCategories ??= {});
+    c[category] = (c[category] ?? 0) + 1;
   }
 
   addFileEdit(ms: number, filePath: string): void {

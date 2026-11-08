@@ -65,7 +65,7 @@ export class Aggregator {
         this.record(e.session).active = true;
         return;
       case "tool":
-        this.out.addTool(e.t, e.name);
+        this.out.addTool(e.t, e.name, e.category);
         this.record(e.session).active = true;
         return;
       case "edit":

@@ -78,6 +78,12 @@ export type DailyAggregate = {
   tokens: TokenCounts;
   models: Record<string, ModelUsage>;
   tools: Record<string, number>;
+  /**
+   * Tool calls per category (see tools.ts). Lets a harness categorize a call
+   * by more than its name, e.g. a shell call that runs grep is a search.
+   * Missing on rows from CLI versions before 0.2; derive it from `tools` then.
+   */
+  toolCategories?: Record<string, number>;
   /** Edits per file. Key is the basename only. */
   files: Record<string, number>;
   /**
@@ -98,6 +104,19 @@ export type Period = "7d" | "30d" | "90d" | "year" | "all";
 export const PERIODS: readonly Period[] = ["7d", "30d", "90d", "year", "all"];
 
 export type SourceFilter = Source | "all";
+
+export function isKnownSource(s: string): s is Source {
+  return (SOURCES as readonly string[]).includes(s);
+}
+
+/**
+ * Rows of harnesses in the registry. The API stores rows of any harness id so
+ * a newer CLI can sync before the server knows its harness; they are shown
+ * once the harness is added.
+ */
+export function knownRows<T extends { source: string }>(rows: readonly T[]): T[] {
+  return rows.filter((r) => isKnownSource(r.source));
+}
 
 /** Tokens shown as the headline number: everything except cache reads. */
 export function headlineTokens(t: TokenCounts): number {
