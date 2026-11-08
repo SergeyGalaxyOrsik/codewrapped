@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import type { Config } from "./config";
+import { webOrigins, type Config } from "./config";
 import type { Db } from "./db";
 import { authSchema } from "./db/schema";
 import { ensureProfile } from "./lib/profiles";
@@ -13,7 +13,7 @@ export function createAuth(db: Db, config: Config) {
     basePath: "/auth",
     secret: config.authSecret,
     database: drizzleAdapter(db, { provider: "pg", schema: authSchema }),
-    trustedOrigins: [config.webUrl],
+    trustedOrigins: webOrigins(config.webUrl),
     user: {
       additionalFields: {
         githubLogin: { type: "string", required: false, input: false },

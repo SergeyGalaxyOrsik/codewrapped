@@ -5,7 +5,7 @@ import { Card } from "@/components/Card";
 import { Footer, Header } from "@/components/Chrome";
 import { CopyCommand } from "@/components/CopyCommand";
 import { SignInButton } from "@/components/SignInButton";
-import { getBoard, getProfile, SITE_URL } from "@/lib/api";
+import { getBoard, getProfile } from "@/lib/api";
 import { exampleSummary } from "@codewrapped/card/element";
 
 export const revalidate = 300;
@@ -72,7 +72,7 @@ export default async function Home() {
   const [hero, board] = await Promise.all([heroCard(), getBoard("week", "hours")]);
   return (
     <>
-      <Header right={<SignInButton quiet label="Sign in" returnTo={`${SITE_URL}/settings`} />} />
+      <Header right={<SignInButton quiet label="Sign in" returnTo="/settings" />} />
       <main className="mx-auto flex w-full max-w-5xl flex-col gap-24 px-4 sm:px-6">
         <section className="grid items-center gap-10 pt-10 md:grid-cols-[1fr_1.35fr] md:pt-16">
           <div className="flex flex-col gap-6">
@@ -130,7 +130,7 @@ export default async function Home() {
               </li>
             </ol>
             <div>
-              <SignInButton returnTo={`${SITE_URL}/settings`} />
+              <SignInButton returnTo="/settings" />
             </div>
           </div>
           <div className="flex flex-col gap-4">

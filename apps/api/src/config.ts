@@ -24,6 +24,15 @@ export type Config = {
   github: { clientId: string; clientSecret: string };
 };
 
+/** The site's origin plus its www or bare twin, so codewrapped.app and www.codewrapped.app both work. */
+export function webOrigins(webUrl: string): string[] {
+  const u = new URL(webUrl);
+  if (u.hostname === "localhost" || /^[\d.]+$/.test(u.hostname)) return [u.origin];
+  const twin = new URL(u.origin);
+  twin.hostname = u.hostname.startsWith("www.") ? u.hostname.slice(4) : `www.${u.hostname}`;
+  return [u.origin, twin.origin];
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const parsed = Env.safeParse(env);
   if (!parsed.success) {

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { signIn } from "@/lib/api";
 import { buttonPrimary, buttonSecondary } from "./Chrome";
 
-/** Starts GitHub sign-in and returns to `returnTo`, or to the current page. */
+/** Starts GitHub sign-in and returns to `returnTo` (a path) on the host the visitor is on, or to the current page. */
 export function SignInButton({ returnTo, label = "Sign in with GitHub", quiet = false }: { returnTo?: string; label?: string; quiet?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -16,7 +16,7 @@ export function SignInButton({ returnTo, label = "Sign in with GitHub", quiet = 
         className={quiet ? buttonSecondary : buttonPrimary}
         onClick={async () => {
           setBusy(true);
-          const err = await signIn(returnTo ?? window.location.href);
+          const err = await signIn(returnTo ? new URL(returnTo, window.location.origin).href : window.location.href);
           if (err) {
             setError(err.message);
             setBusy(false);

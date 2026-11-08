@@ -4,6 +4,7 @@ import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { z } from "zod";
 import { buildPublicProfile, PERIODS, todayIn, type Period, type PublicProfile } from "@codewrapped/stats";
+import { webOrigins } from "./config";
 import type { Db } from "./db";
 import { cliTokens, dailyStats, DEFAULT_VISIBILITY, deviceCodes, profiles, users, type Visibility } from "./db/schema";
 import { TtlCache } from "./lib/cache";
@@ -50,11 +51,12 @@ export function createApp(deps: AppDeps) {
   const boards = new TtlCache<Candidate[]>(5 * 60_000);
   const syncLimiter = new RateLimiter(deps.syncLimit?.requests ?? 30, deps.syncLimit?.windowMs ?? 10 * 60_000);
   const app = new Hono<{ Variables: Vars }>();
+  const allowedOrigins = webOrigins(deps.webUrl);
 
   app.use(
     "*",
     cors({
-      origin: deps.webUrl,
+      origin: (origin) => (allowedOrigins.includes(origin) ? origin : null),
       credentials: true,
       allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
       allowHeaders: ["Content-Type", "Authorization"],

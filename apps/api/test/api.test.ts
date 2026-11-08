@@ -253,8 +253,12 @@ describe("http", () => {
     expect(ok.status).toBe(200);
     expect(ok.headers.get("access-control-allow-origin")).toBe(WEB);
     expect(ok.headers.get("access-control-allow-credentials")).toBe("true");
+    const www = await t.req("GET", "/health", { headers: { origin: "https://www.web.test" } });
+    expect(www.headers.get("access-control-allow-origin")).toBe("https://www.web.test");
     const other = await t.req("GET", "/health", { headers: { origin: "https://evil.test" } });
     expect(other.headers.get("access-control-allow-origin")).toBeNull();
+    const lookalike = await t.req("GET", "/health", { headers: { origin: "https://web.test.evil.test" } });
+    expect(lookalike.headers.get("access-control-allow-origin")).toBeNull();
   });
 
   it("validates the period", async () => {
