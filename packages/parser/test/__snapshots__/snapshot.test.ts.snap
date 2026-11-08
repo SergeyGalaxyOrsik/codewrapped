@@ -246,6 +246,12 @@ exports[`fixture snapshot > produces the same daily aggregates > America/Los_Ang
       "lines": 0,
       "unknownEvents": {},
     },
+    "zcode": {
+      "badLines": 0,
+      "files": 0,
+      "lines": 0,
+      "unknownEvents": {},
+    },
   },
 }
 `;
@@ -537,6 +543,12 @@ exports[`fixture snapshot > produces the same daily aggregates > Europe/Berlin 1
       "lines": 0,
       "unknownEvents": {},
     },
+    "zcode": {
+      "badLines": 0,
+      "files": 0,
+      "lines": 0,
+      "unknownEvents": {},
+    },
   },
 }
 `;
@@ -782,6 +794,12 @@ exports[`fixture snapshot > produces the same daily aggregates > UTC 1`] = `
       "unknownEvents": {},
     },
     "pi": {
+      "badLines": 0,
+      "files": 0,
+      "lines": 0,
+      "unknownEvents": {},
+    },
+    "zcode": {
       "badLines": 0,
       "files": 0,
       "lines": 0,

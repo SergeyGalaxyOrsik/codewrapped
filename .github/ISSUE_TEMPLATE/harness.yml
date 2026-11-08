@@ -66,6 +66,17 @@ body:
       options:
         - label: I have files in ~/.local/share/opencode/storage/ and attached a sanitized sample of each kind.
         - label: I use opencode 2.x and attached sanitized session_message rows.
+  - type: checkboxes
+    id: zcode
+    attributes:
+      label: ZCode users
+      description: |
+        ZCode support was written from ZCode's source and is not checked against real files yet.
+        Compare `npx codewrapped --source zcode --period 7d` with ZCode's own `/usage` and say what differs.
+        A few sanitized rows help: `sqlite3 ~/.zcode/cli/db/db.sqlite "select data from message where json_extract(data, '$.role') = 'assistant' limit 3"`, then replace text, paths and ids with "x".
+      options:
+        - label: I compared the numbers with ZCode's /usage.
+        - label: I attached sanitized message rows.
   - type: textarea
     id: notes
     attributes:

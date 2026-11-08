@@ -4,14 +4,14 @@ import { join, resolve } from "node:path";
 import type { Source } from "@codewrapped/stats";
 import type { Adapter, FolderOrigin } from "./adapter";
 import { ADAPTERS } from "./adapters";
-import { dirNames, isDir } from "./files";
+import { dirNames, isDir, isFile } from "./files";
 
 /** One account's log folder: ~/.claude-work for Claude Code, ~/.codex for Codex. */
 export type LogRoot = {
   agent: Source;
   /** The account folder, resolved through symlinks. */
   root: string;
-  /** The folders under it that hold logs: projects/ for Claude Code, sessions/ and archived_sessions/ for Codex. */
+  /** The folders under it that hold logs: projects/ for Claude Code, sessions/ and archived_sessions/ for Codex. For ZCode, possibly its database file. */
   dirs: string[];
   via: FolderOrigin;
 };
@@ -115,7 +115,7 @@ export async function findLogFolders(
     const real = await realpath(root).catch(() => null);
     if (!real || seen.has(`${a.id}:${real}`)) return;
     const existing: string[] = [];
-    for (const d of dirs) if (await isDir(d)) existing.push(await realpath(d));
+    for (const d of dirs) if ((await isDir(d)) || (a.dbFile && (await isFile(d)))) existing.push(await realpath(d));
     if (existing.length === 0) return;
     if (verify && !(await a.looksLike(real))) return;
     seen.add(`${a.id}:${real}`);
