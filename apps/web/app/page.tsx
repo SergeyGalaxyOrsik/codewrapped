@@ -130,8 +130,8 @@ const faq: Array<[string, ReactNode]> = [
   [
     "Which coding agents does it read?",
     <>
-      {SUPPORTED_HARNESSES}: Claude Code in the terminal and in VS Code, Codex from the CLI and the desktop app, Pi, opencode, and ZCode from the CLI and
-      the desktop app. Pi, opencode and ZCode are in beta until more people have checked their numbers. Each agent is a small adapter, added once it is checked against real
+      {SUPPORTED_HARNESSES}: Claude Code in the terminal and in VS Code, Codex from the CLI and the desktop app, Pi, opencode, ZCode from the CLI and
+      the desktop app, and Cursor's agent chats. Pi, opencode, ZCode and Cursor are in beta until more people have checked their numbers. Each agent is a small adapter, added once it is checked against real
       logs. To ask for yours or report a wrong number,{" "}
       <a
         href={`${site.repo}/issues/new?template=harness.yml`}
@@ -292,7 +292,7 @@ export default async function Home() {
         </section>
 
         {/* The same command as the hero, for whoever read this far. */}
-        <section className="cw-reveal flex flex-col items-start gap-6 rounded-[12px] border border-border p-8 sm:p-12">
+        <section className="cw-reveal flex flex-col items-start gap-6 rounded-[12px] border border-border p-6 sm:p-12">
           <h2 className="text-[28px] font-semibold leading-[1.15] tracking-[-0.025em] sm:text-[32px]">See your month in one command.</h2>
           <CopyCommand />
         </section>

@@ -180,6 +180,8 @@ async function wrap(opts: CliOptions): Promise<number> {
     const names = listText(beta.map((s) => SOURCE_NAMES[s]));
     out(dim(`${names} support is in beta. If a number looks wrong: ${site.repo}/issues/new?template=harness.yml`));
   }
+  // Cursor stopped saving token counts locally in early 2026; its time, prompts and tools are complete.
+  if (summary.bySource.cursor.activeMinutes > 0) out(dim("Cursor keeps token counts on this computer only for some older chats, so its tokens are partial."));
   if (summary.truncated) {
     out();
     out(`Your logs start on ${summary.firstDataDay}, so this covers ${summary.range.days} days.`);

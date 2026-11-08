@@ -1,6 +1,6 @@
 # codewrapped
 
-Your month with coding agents, on one card. Reads your coding agent logs on your computer and makes a shareable card: tokens, hours, repositories, tools and when you work. Works with Claude Code, Codex, Pi (beta), opencode (beta) and ZCode (beta).
+Your month with coding agents, on one card. Reads your coding agent logs on your computer and makes a shareable card: tokens, hours, repositories, tools and when you work. Works with Claude Code, Codex, Pi (beta), opencode (beta), ZCode (beta) and Cursor (beta).
 
 ```sh
 npx codewrapped
@@ -8,7 +8,7 @@ npx codewrapped
 
 ![An example codewrapped card](https://raw.githubusercontent.com/SergeyGalaxyOrsik/codewrapped/main/docs/card-light.png)
 
-- **What it reads:** session logs in `~/.claude`, `~/.codex`, `~/.pi/agent`, `~/.local/share/opencode`, `~/.zcode/cli/db` and any other Claude Code or Codex folders it finds (see [SECURITY.md](https://github.com/SergeyGalaxyOrsik/codewrapped/blob/main/SECURITY.md) for exactly where it looks), and from `.git/config` only the repository name from the remote URL, never credentials.
+- **What it reads:** session logs in `~/.claude`, `~/.codex`, `~/.pi/agent`, `~/.local/share/opencode`, `~/.zcode/cli/db`, Cursor's chat database and any other Claude Code or Codex folders it finds (see [SECURITY.md](https://github.com/SergeyGalaxyOrsik/codewrapped/blob/main/SECURITY.md) for exactly where it looks), and from `.git/config` only the repository name from the remote URL, never credentials.
 - **What it never keeps:** your prompts, your code, full paths.
 - **Without an account:** it makes zero network requests.
 

@@ -9,20 +9,48 @@ export type ToolCategory = (typeof TOOL_CATEGORIES)[number];
 /** Lowercased raw names per category, across harnesses. MCP tools go by their mcp__ prefix. */
 const NAMES: Record<Exclude<ToolCategory, "mcp" | "other">, string[]> = {
   // Claude Code: Edit, MultiEdit, Write, NotebookEdit. Codex: apply_patch. Pi: edit, write. opencode: also patch. ZCode: also ApplyPatch.
-  edit: ["edit", "multiedit", "write", "notebookedit", "apply_patch", "patch", "applypatch"],
-  // Claude Code: Read, LS, NotebookRead. Codex: view_image. Pi: read, ls. opencode: read, list.
-  read: ["read", "ls", "notebookread", "view_image", "list"],
+  // Cursor: edit_file(_v2), search_replace, write, apply_patch, edit_notebook, delete_file.
+  edit: ["edit", "multiedit", "write", "notebookedit", "apply_patch", "patch", "applypatch", "edit_file", "edit_file_v2", "search_replace", "edit_notebook", "delete_file"],
+  // Claude Code: Read, LS, NotebookRead. Codex: view_image. Pi: read, ls. opencode: read, list. Cursor: read_file(_v2), list_dir(_v2), read_lints.
+  read: ["read", "ls", "notebookread", "view_image", "list", "read_file", "read_file_v2", "list_dir", "list_dir_v2", "read_lints"],
   // Claude Code: Grep, Glob. Codex: find. Pi: grep, find. opencode: grep, glob.
-  search: ["grep", "glob", "find"],
-  // Claude Code: Bash, BashOutput, KillShell. Codex: shell, exec_command, write_stdin, local_shell.
-  shell: ["bash", "shell", "exec_command", "write_stdin", "shell_command", "local_shell", "bashoutput", "killshell", "killbash"],
-  // Claude Code: WebFetch, WebSearch. Codex: web_search, web__run. opencode: webfetch, websearch, codesearch. ZCode: WebFetch, WebSearch, web_search.
-  web: ["webfetch", "websearch", "web_search", "web__run", "codesearch"],
+  // Cursor: ripgrep_raw_search, glob_file_search, codebase_search and older names.
+  search: [
+    "grep",
+    "glob",
+    "find",
+    "ripgrep_raw_search",
+    "ripgrep",
+    "rg",
+    "grep_search",
+    "glob_file_search",
+    "file_search",
+    "codebase_search",
+    "semantic_search_full",
+  ],
+  // Claude Code: Bash, BashOutput, KillShell. Codex: shell, exec_command, write_stdin, local_shell. Cursor: run_terminal_cmd, run_terminal_command_v2.
+  shell: [
+    "bash",
+    "shell",
+    "exec_command",
+    "write_stdin",
+    "shell_command",
+    "local_shell",
+    "bashoutput",
+    "killshell",
+    "killbash",
+    "run_terminal_cmd",
+    "run_terminal_command_v2",
+  ],
+  // Claude Code: WebFetch, WebSearch. Codex: web_search, web__run. opencode: webfetch, websearch, codesearch. ZCode: WebFetch, WebSearch, web_search. Cursor: web_search, web_fetch.
+  web: ["webfetch", "websearch", "web_search", "web__run", "codesearch", "web_fetch"],
   // Claude Code: TodoWrite, plan mode. Codex: update_plan. opencode: todowrite, todoread. ZCode: TodoWrite, TodoRead, plan mode.
-  plan: ["todowrite", "todoread", "exitplanmode", "enterplanmode", "update_plan"],
-  // Claude Code: Task, Agent and agent messaging. Codex: spawn_agent and friends. ZCode: Agent, Task, SendMessage.
+  // Cursor: todo_write, create_plan, update_current_step.
+  plan: ["todowrite", "todoread", "exitplanmode", "enterplanmode", "update_plan", "todo_write", "create_plan", "update_current_step"],
+  // Claude Code: Task, Agent and agent messaging. Codex: spawn_agent and friends. ZCode: Agent, Task, SendMessage. Cursor: task_v2.
   subagent: [
     "task",
+    "task_v2",
     "agent",
     "subagenthandback",
     "sendmessage",
