@@ -16,7 +16,7 @@ import {
   BOARD_METRICS,
   BOARD_PERIODS,
   boardRange,
-  MIN_ACCOUNT_AGE_DAYS,
+  holdFor,
   percentile,
   rank,
   score,
@@ -35,6 +35,8 @@ export type AppDeps = {
   /** Better Auth's request handler, mounted at /auth/*. */
   authHandler?: (req: Request) => Promise<Response>;
   now?: () => Date;
+  /** When the user's GitHub account was created, for accounts made before that was recorded at sign-up. */
+  githubCreatedAt?: (userId: string) => Promise<Date | null>;
   syncLimit?: { requests: number; windowMs: number };
 };
 
@@ -49,6 +51,8 @@ export function createApp(deps: AppDeps) {
   const now = deps.now ?? (() => new Date());
   const cache = new TtlCache<PublicProfile>(5 * 60_000);
   const boards = new TtlCache<Candidate[]>(5 * 60_000);
+  /** Users GitHub was asked about lately, so a failing lookup is not repeated on every request. */
+  const askedGithub = new TtlCache<true>(60 * 60_000);
   const syncLimiter = new RateLimiter(deps.syncLimit?.requests ?? 30, deps.syncLimit?.windowMs ?? 10 * 60_000);
   const app = new Hono<{ Variables: Vars }>();
   const allowedOrigins = webOrigins(deps.webUrl);
@@ -280,16 +284,15 @@ export function createApp(deps: AppDeps) {
       .innerJoin(profiles, eq(profiles.userId, dailyStats.userId))
       .innerJoin(users, eq(users.id, dailyStats.userId))
       .where(and(gte(dailyStats.day, start), lte(dailyStats.day, end)));
-    const minCreated = now().getTime() - MIN_ACCOUNT_AGE_DAYS * 86_400_000;
-    const byUser = new Map<string, { first: (typeof rows)[number]; days: (typeof rows)[number]["data"][]; flagged: boolean }>();
+    const byUser = new Map<string, { first: (typeof rows)[number]; days: (typeof rows)[number]["data"][]; flags: Array<{ day: string; flag: string }> }>();
     for (const r of rows) {
-      const u = byUser.get(r.userId) ?? { first: r, days: [], flagged: false };
+      const u = byUser.get(r.userId) ?? { first: r, days: [], flags: [] };
       u.days.push(r.data);
-      u.flagged ||= r.flag !== null;
+      if (r.flag !== null) u.flags.push({ day: r.data.day, flag: r.flag });
       byUser.set(r.userId, u);
     }
-    const list: Candidate[] = [...byUser.values()].map(({ first, days, flagged }) => {
-      const oldEnough = first.githubCreatedAt !== null && first.githubCreatedAt.getTime() <= minCreated;
+    const list: Candidate[] = [...byUser.values()].map(({ first, days, flags }) => {
+      const hold = first.trusted ? null : holdFor(first.githubCreatedAt, flags, now());
       return {
         userId: first.userId,
         handle: first.handle,
@@ -297,7 +300,8 @@ export function createApp(deps: AppDeps) {
         avatarUrl: first.avatarUrl,
         xHandle: first.xHandle,
         optedIn: first.optedIn,
-        eligible: first.trusted || (oldEnough && !flagged),
+        eligible: hold === null,
+        hold,
         scores: score(days),
       };
     });
@@ -333,17 +337,39 @@ export function createApp(deps: AppDeps) {
     });
   });
 
+  /**
+   * Fills users.github_created_at when it is missing, which holds every account made
+   * before the leaderboards back from ranking. At most one GitHub request per user an hour.
+   */
+  const fillGithubAge = async (userId: string): Promise<boolean> => {
+    if (!deps.githubCreatedAt || askedGithub.get(userId)) return false;
+    askedGithub.set(userId, true);
+    const at = await deps.githubCreatedAt(userId).catch(() => null);
+    if (!at) return false;
+    await db
+      .update(users)
+      .set({ githubCreatedAt: at })
+      .where(and(eq(users.id, userId), isNull(users.githubCreatedAt)));
+    boards.bust("");
+    return true;
+  };
+
   app.get("/leaderboard/me", requireSession, async (c) => {
     const q = boardQuery(c);
     if (!q) return fail(c, 400, "invalid_board", `Use period ${BOARD_PERIODS.join(" or ")} and metric ${BOARD_METRICS.join(", ")}.`);
-    const all = await candidates(q.period);
-    const me = all.find((x) => x.userId === c.get("userId"));
+    let all = await candidates(q.period);
+    let me = all.find((x) => x.userId === c.get("userId"));
+    if (me?.hold?.reason === "account_age_unknown" && (await fillGithubAge(me.userId))) {
+      all = await candidates(q.period);
+      me = all.find((x) => x.userId === c.get("userId"));
+    }
     const [p] = await db.select({ optedIn: profiles.leaderboard }).from(profiles).where(eq(profiles.userId, c.get("userId")));
     const ranked = rank(all.filter((x) => x.optedIn && x.eligible), q.metric);
     const mine = ranked.find((x) => x.userId === c.get("userId"));
     return c.json({
       optedIn: p?.optedIn ?? false,
       eligible: me?.eligible ?? null,
+      hold: me?.hold ?? null,
       rank: mine?.rank ?? null,
       value: mine?.value ?? null,
       participants: ranked.length,
@@ -391,11 +417,12 @@ export function createApp(deps: AppDeps) {
   me.get("/", async (c) => {
     const userId = c.get("userId");
     const [row] = await db
-      .select({ name: users.name, email: users.email, profile: profiles })
+      .select({ name: users.name, email: users.email, githubCreatedAt: users.githubCreatedAt, profile: profiles })
       .from(users)
       .leftJoin(profiles, eq(profiles.userId, users.id))
       .where(eq(users.id, userId));
     if (!row?.profile) return fail(c, 404, "not_found", "No profile for this account.");
+    if (row.githubCreatedAt === null) await fillGithubAge(userId);
     const [stats] = await db
       .select({ days: count(), firstDay: min(dailyStats.day), lastDay: max(dailyStats.day) })
       .from(dailyStats)

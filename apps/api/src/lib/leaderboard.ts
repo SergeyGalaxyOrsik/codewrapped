@@ -67,8 +67,27 @@ export type Candidate = {
   optedIn: boolean;
   /** Passes review: trusted by hand, or an old enough account with no flagged day in the period. */
   eligible: boolean;
+  /** Why an untrusted user waits for review, or null. Shown only to that user. */
+  hold: Hold | null;
   scores: Scores;
 };
+
+export type Hold =
+  /** The account predates the github_created_at column and GitHub could not be asked yet. */
+  | { reason: "account_age_unknown" }
+  | { reason: "account_too_new"; ranksFrom: string }
+  | { reason: "flagged_days"; days: Array<{ day: string; flag: string }> };
+
+/** Why a user is held back from the boards, before any manual trust. */
+export function holdFor(githubCreatedAt: Date | null, flags: Array<{ day: string; flag: string }>, now: Date): Hold | null {
+  if (githubCreatedAt === null) return { reason: "account_age_unknown" };
+  const ranksFrom = new Date(githubCreatedAt.getTime() + MIN_ACCOUNT_AGE_DAYS * 86_400_000);
+  if (ranksFrom > now) return { reason: "account_too_new", ranksFrom: ranksFrom.toISOString().slice(0, 10) };
+  // One entry per day: the same day can be flagged on several machines or sources.
+  const days = [...new Map(flags.map((f) => [f.day, f] as const)).values()].sort((a, b) => a.day.localeCompare(b.day));
+  if (days.length > 0) return { reason: "flagged_days", days };
+  return null;
+}
 
 export type Ranked = Candidate & { rank: number; value: number };
 

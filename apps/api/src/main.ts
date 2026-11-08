@@ -7,6 +7,7 @@ import { createApp } from "./app";
 import { createAuth } from "./auth";
 import { loadConfig } from "./config";
 import { schema, type Db } from "./db";
+import { githubCreatedAt } from "./lib/github";
 
 const config = loadConfig();
 const client = postgres(config.databaseUrl, { max: 10 });
@@ -22,6 +23,7 @@ const app = createApp({
   webUrl: config.webUrl,
   authHandler: (req) => auth.handler(req),
   getUserId: async (req) => (await auth.api.getSession({ headers: req.headers }))?.user.id ?? null,
+  githubCreatedAt: (userId) => githubCreatedAt(db, userId),
 });
 
 const server = serve({ fetch: app.fetch, port: config.port }, (info) => {

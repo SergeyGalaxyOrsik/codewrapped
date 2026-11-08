@@ -1,8 +1,9 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import type { PublicProfile } from "@codewrapped/stats";
-import { dailyStats, profiles } from "../src/db/schema";
-import { boardRange, rank, score } from "../src/lib/leaderboard";
+import { accounts, dailyStats, profiles, users } from "../src/db/schema";
+import { githubCreatedAt } from "../src/lib/github";
+import { boardRange, holdFor, rank, score } from "../src/lib/leaderboard";
 import { flagDay } from "../src/lib/plausibility";
 import { day, setup } from "./helpers";
 
@@ -10,7 +11,7 @@ type Board = { entries: Array<{ rank: number; handle: string; value: number; xHa
 const json = async <T>(res: Response) => (await res.json()) as T;
 
 /** A user who opted in and synced the given days. */
-async function player(t: Awaited<ReturnType<typeof setup>>, id: string, days: ReturnType<typeof day>[], opts: { optIn?: boolean; githubCreatedAt?: Date } = {}) {
+async function player(t: Awaited<ReturnType<typeof setup>>, id: string, days: ReturnType<typeof day>[], opts: { optIn?: boolean; githubCreatedAt?: Date | null } = {}) {
   await t.createUser(id, id, opts);
   const token = await t.login(id);
   if (days.length > 0) expect((await t.sync(token, days, `machine-${id}`)).status).toBe(200);
@@ -39,7 +40,7 @@ describe("scoring", () => {
   });
 
   it("shares a rank on ties", () => {
-    const c = (handle: string, minutes: number) => ({ userId: handle, handle, displayName: null, avatarUrl: null, xHandle: null, optedIn: true, eligible: true, scores: { minutes, streak: 0, tokens: 0 } });
+    const c = (handle: string, minutes: number) => ({ userId: handle, handle, displayName: null, avatarUrl: null, xHandle: null, optedIn: true, eligible: true, hold: null, scores: { minutes, streak: 0, tokens: 0 } });
     expect(rank([c("a", 10), c("b", 30), c("c", 30), c("d", 0)], "hours").map((r) => [r.handle, r.rank])).toEqual([
       ["b", 1],
       ["c", 1],
@@ -99,6 +100,45 @@ describe("leaderboards", () => {
     expect(after.entries.map((e) => e.handle)).toEqual(["new", "ada"]);
   });
 
+  it("tell you why your days wait for review", async () => {
+    const t = await setup();
+    await player(t, "new", [day("2026-11-06", "claude")], { githubCreatedAt: new Date("2026-10-01T00:00:00Z") });
+    await player(t, "cheat", [day("2026-11-06", "claude", { from: 0, to: 9, tokens: 10 * 1_000_000 })]);
+    type Me = { eligible: boolean; hold: unknown; rank: number | null };
+    const mine = async (user: string) => json<Me>(await t.req("GET", "/leaderboard/me?period=week&metric=hours", { user }));
+    expect(await mine("new")).toMatchObject({ eligible: false, rank: null, hold: { reason: "account_too_new", ranksFrom: "2026-11-30" } });
+    expect(await mine("cheat")).toMatchObject({
+      eligible: false,
+      hold: { reason: "flagged_days", days: [{ day: "2026-11-06", flag: expect.stringMatching(/tokens per active minute/) }] },
+    });
+  });
+
+  it("ask GitHub for the account age of people who signed up before it was recorded", async () => {
+    const asked: string[] = [];
+    const t = await setup({
+      githubCreatedAt: async (userId) => {
+        asked.push(userId);
+        return userId === "early" ? new Date("2019-05-01T00:00:00Z") : null;
+      },
+    });
+    await player(t, "early", [day("2026-11-06", "claude")], { githubCreatedAt: null });
+    await player(t, "unknown", [day("2026-11-06", "claude")], { githubCreatedAt: null });
+    const board = await json<Board>(await t.req("GET", "/leaderboard?period=week&metric=hours"));
+    expect(board.entries).toEqual([]);
+
+    const me = await json<{ rank: number | null; hold: unknown }>(await t.req("GET", "/leaderboard/me?period=week&metric=hours", { user: "early" }));
+    expect(me).toMatchObject({ rank: 1, hold: null });
+    const [row] = await t.db.select({ at: users.githubCreatedAt }).from(users).where(eq(users.id, "early"));
+    expect(row!.at?.toISOString()).toBe("2019-05-01T00:00:00.000Z");
+    expect((await json<Board>(await t.req("GET", "/leaderboard?period=week&metric=hours"))).entries.map((e) => e.handle)).toEqual(["early"]);
+
+    // GitHub had no answer: say so, and do not ask again on the next request.
+    const other = await json<{ hold: unknown }>(await t.req("GET", "/leaderboard/me?period=week&metric=hours", { user: "unknown" }));
+    expect(other.hold).toEqual({ reason: "account_age_unknown" });
+    await t.req("GET", "/me", { user: "unknown" });
+    expect(asked).toEqual(["early", "unknown"]);
+  });
+
   it("pin your own rank, and store an optional X handle", async () => {
     const t = await setup();
     await player(t, "ada", [day("2026-11-06", "claude", { from: 0, to: 99 })]);
@@ -143,3 +183,49 @@ async function setupFrom(t: Awaited<ReturnType<typeof setup>>) {
   const { createApp } = await import("../src/app");
   return createApp({ db: t.db, webUrl: "https://web.test", getUserId: async () => null, now: () => t.clock.now });
 }
+
+describe("holds", () => {
+  const now = new Date("2026-11-08T12:00:00Z");
+  it("name the first reason a user waits, oldest flagged day first and once per day", () => {
+    expect(holdFor(null, [], now)).toEqual({ reason: "account_age_unknown" });
+    expect(holdFor(new Date("2026-10-01T00:00:00Z"), [], now)).toEqual({ reason: "account_too_new", ranksFrom: "2026-11-30" });
+    const flags = [
+      { day: "2026-11-06", flag: "b" },
+      { day: "2026-11-03", flag: "a" },
+      { day: "2026-11-06", flag: "b" },
+    ];
+    expect(holdFor(new Date("2020-01-01T00:00:00Z"), flags, now)).toEqual({
+      reason: "flagged_days",
+      days: [
+        { day: "2026-11-03", flag: "a" },
+        { day: "2026-11-06", flag: "b" },
+      ],
+    });
+    expect(holdFor(new Date("2020-01-01T00:00:00Z"), [], now)).toBeNull();
+  });
+});
+
+describe("GitHub account age", () => {
+  it("is asked by numeric account id, with the token, and without it when the token is revoked", async () => {
+    const t = await setup();
+    await t.createUser("u1", "someone", { githubCreatedAt: null });
+    await t.db.insert(accounts).values({ id: "a1", accountId: "4242", providerId: "github", userId: "u1", accessToken: "gho_test" });
+    const calls: Array<{ url: string; auth: string | undefined }> = [];
+    const fake = (status: number[]) =>
+      (async (url: string, init?: RequestInit) => {
+        calls.push({ url, auth: (init?.headers as Record<string, string>).authorization });
+        const s = status.shift()!;
+        return new Response(JSON.stringify(s === 200 ? { created_at: "2018-03-04T05:06:07Z" } : {}), { status: s });
+      }) as typeof fetch;
+
+    expect((await githubCreatedAt(t.db, "u1", fake([200])))?.toISOString()).toBe("2018-03-04T05:06:07.000Z");
+    expect(calls).toEqual([{ url: "https://api.github.com/user/4242", auth: "Bearer gho_test" }]);
+
+    calls.length = 0;
+    expect(await githubCreatedAt(t.db, "u1", fake([401, 200]))).not.toBeNull();
+    expect(calls.map((c) => c.auth)).toEqual(["Bearer gho_test", undefined]);
+
+    expect(await githubCreatedAt(t.db, "u1", fake([404]))).toBeNull();
+    expect(await githubCreatedAt(t.db, "nobody", fake([200]))).toBeNull();
+  });
+});

@@ -10,7 +10,7 @@ import { ensureProfile } from "../src/lib/profiles";
 
 export const WEB = "https://web.test";
 
-export async function setup(opts: { syncLimit?: { requests: number; windowMs: number } } = {}) {
+export async function setup(opts: { syncLimit?: { requests: number; windowMs: number }; githubCreatedAt?: (userId: string) => Promise<Date | null> } = {}) {
   const pg = new PGlite();
   await migrate(drizzle(pg), { migrationsFolder: fileURLToPath(new URL("../drizzle", import.meta.url)) });
   const db = drizzle(pg, { schema }) as unknown as Db;
@@ -22,6 +22,7 @@ export async function setup(opts: { syncLimit?: { requests: number; windowMs: nu
     getUserId: async (req) => req.headers.get("x-test-user"),
     now: () => clock.now,
     syncLimit: opts.syncLimit,
+    githubCreatedAt: opts.githubCreatedAt,
   });
 
   const req = (method: string, path: string, init: { body?: unknown; user?: string; token?: string; headers?: Record<string, string> } = {}) =>
@@ -36,8 +37,9 @@ export async function setup(opts: { syncLimit?: { requests: number; windowMs: nu
       body: init.body === undefined ? undefined : typeof init.body === "string" ? init.body : JSON.stringify(init.body),
     });
 
-  const createUser = async (id: string, githubLogin: string, opts: { githubCreatedAt?: Date } = {}) => {
-    const githubCreatedAt = opts.githubCreatedAt ?? new Date("2020-01-01T00:00:00Z");
+  /** `githubCreatedAt: null` makes an account from before that column existed. */
+  const createUser = async (id: string, githubLogin: string, opts: { githubCreatedAt?: Date | null } = {}) => {
+    const githubCreatedAt = opts.githubCreatedAt === undefined ? new Date("2020-01-01T00:00:00Z") : opts.githubCreatedAt;
     await db.insert(users).values({ id, name: githubLogin, email: `${id}@example.test`, githubLogin, githubCreatedAt });
     await ensureProfile(db, { id, name: githubLogin, image: null, githubLogin });
   };
