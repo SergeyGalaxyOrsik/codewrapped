@@ -108,7 +108,7 @@ export default async function ProfilePage({ params }: Params) {
         </nav>
 
         {allTime.firstDay === null ? (
-          <div className="flex flex-col items-start gap-4 rounded-[12px] border border-border p-8">
+          <div className="flex flex-col items-start gap-4 rounded-[12px] border border-border p-6 sm:p-8">
             <p className="text-[16px]">@{profile.handle} has not synced any days yet.</p>
             <p className="text-[14px] text-muted">
               After <code className="font-mono text-fg">npx codewrapped login</code>, run <code className="font-mono text-fg">npx codewrapped sync</code> and the card shows up here.
@@ -181,7 +181,7 @@ export default async function ProfilePage({ params }: Params) {
           </Section>
         )}
 
-        <section className="mt-6 flex flex-col items-start gap-4 rounded-[12px] border border-border bg-surface p-8">
+        <section className="mt-6 flex flex-col items-start gap-4 rounded-[12px] border border-border bg-surface p-6 sm:p-8">
           <h2 className="text-[22px] font-semibold tracking-[-0.02em]">Make your own</h2>
           <p className="text-[15px] text-muted">One command. It reads your coding agent logs on your computer and makes this card.</p>
           <CopyCommand />

@@ -292,7 +292,7 @@ export default async function Home() {
         </section>
 
         {/* The same command as the hero, for whoever read this far. */}
-        <section className="cw-reveal flex flex-col items-start gap-6 rounded-[12px] border border-border p-8 sm:p-12">
+        <section className="cw-reveal flex flex-col items-start gap-6 rounded-[12px] border border-border p-6 sm:p-12">
           <h2 className="text-[28px] font-semibold leading-[1.15] tracking-[-0.025em] sm:text-[32px]">See your month in one command.</h2>
           <CopyCommand />
         </section>

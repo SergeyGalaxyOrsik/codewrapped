@@ -137,10 +137,10 @@ export function Settings() {
 
   return (
     <div className="flex flex-col py-10">
-      <div className="flex items-end justify-between gap-4 pb-8">
+      <div className="flex flex-wrap items-end justify-between gap-4 pb-8">
         <div>
           <h1 className="text-[28px] font-semibold tracking-[-0.02em]">Settings</h1>
-          <p className="text-[14px] text-muted">{me.email}</p>
+          <p className="break-all text-[14px] text-muted">{me.email}</p>
         </div>
         <Link href={`/@${me.profile.handle}`} className={buttonSecondary}>
           View your page
@@ -171,7 +171,7 @@ export function Settings() {
               value={handle}
               onChange={(e) => setHandle(e.target.value.toLowerCase())}
               disabled={!me.profile.canChangeHandle}
-              className="w-full rounded-[8px] border border-border bg-bg px-3 py-2 font-mono text-[14px] disabled:text-muted"
+              className="min-w-0 flex-1 rounded-[8px] border border-border bg-bg px-3 py-2 font-mono text-[16px] sm:text-[14px] disabled:text-muted"
             />
             {me.profile.canChangeHandle && (
               <button type="submit" className={buttonSecondary} disabled={handle === me.profile.handle}>
@@ -200,7 +200,7 @@ export function Settings() {
               value={displayName}
               maxLength={80}
               onChange={(e) => setDisplayName(e.target.value)}
-              className="w-full rounded-[8px] border border-border bg-bg px-3 py-2 text-[14px]"
+              className="min-w-0 flex-1 rounded-[8px] border border-border bg-bg px-3 py-2 text-[16px] sm:text-[14px]"
             />
             <button type="submit" className={buttonSecondary}>
               Save name
@@ -269,7 +269,7 @@ export function Settings() {
               placeholder="@you"
               maxLength={16}
               onChange={(e) => setXHandle(e.target.value)}
-              className="w-full rounded-[8px] border border-border bg-bg px-3 py-2 font-mono text-[14px]"
+              className="min-w-0 flex-1 rounded-[8px] border border-border bg-bg px-3 py-2 font-mono text-[16px] sm:text-[14px]"
             />
             <button type="submit" className={buttonSecondary}>
               Save handle
@@ -291,8 +291,8 @@ export function Settings() {
           <ul className="flex flex-col">
             {tokens.map((t) => (
               <li key={t.id} className="flex items-center justify-between gap-4 border-t border-border py-3 first:border-t-0">
-                <div className="flex flex-col">
-                  <span className="text-[15px]">{t.machineLabel}</span>
+                <div className="flex min-w-0 flex-col">
+                  <span className="break-words text-[15px]">{t.machineLabel}</span>
                   <span className="text-[13px] text-muted">
                     Connected {when(t.createdAt)}, last sync {when(t.lastUsedAt)}
                   </span>
