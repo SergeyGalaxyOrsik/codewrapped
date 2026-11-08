@@ -12,6 +12,7 @@ export { ADAPTER, ADAPTERS } from "./adapters";
 export { looksLikeClaudeHome } from "./adapters/claude";
 export { looksLikeCodexHome, patchFiles } from "./adapters/codex";
 export { cursorAppDirs, cursorToolCategory, looksLikeCursorHome } from "./adapters/cursor";
+export { looksLikeOmpHome } from "./adapters/omp";
 export { looksLikeOpencodeHome } from "./adapters/opencode";
 export { looksLikePiHome } from "./adapters/pi";
 export { looksLikeZcodeHome } from "./adapters/zcode";

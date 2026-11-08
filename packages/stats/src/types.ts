@@ -2,21 +2,21 @@
  * Harnesses with a shipped adapter. The id is stored with every synced row,
  * so the API must accept a new id before any CLI sends it.
  */
-export const SOURCES = ["claude", "codex", "pi", "opencode", "zcode", "cursor"] as const;
+export const SOURCES = ["claude", "codex", "pi", "opencode", "zcode", "cursor", "omp"] as const;
 export type Source = (typeof SOURCES)[number];
 
 /** Display names. */
-export const SOURCE_NAMES: Record<Source, string> = { claude: "Claude Code", codex: "Codex", pi: "Pi", opencode: "opencode", zcode: "ZCode", cursor: "Cursor" };
+export const SOURCE_NAMES: Record<Source, string> = { claude: "Claude Code", codex: "Codex", pi: "Pi", opencode: "opencode", zcode: "ZCode", cursor: "Cursor", omp: "oh-my-pi" };
 
 /** Harnesses checked only against the maintainer's logs so far. Shown with "(beta)" until other people's logs confirm them. */
-export const BETA_SOURCES: ReadonlySet<Source> = new Set(["pi", "opencode", "zcode", "cursor"]);
+export const BETA_SOURCES: ReadonlySet<Source> = new Set(["pi", "opencode", "zcode", "cursor", "omp"]);
 
 /** "Pi (beta)" for a beta harness, else its name. */
 export function sourceLabel(s: Source): string {
   return BETA_SOURCES.has(s) ? `${SOURCE_NAMES[s]} (beta)` : SOURCE_NAMES[s];
 }
 
-/** "Claude Code, Codex, Pi (beta), opencode (beta), ZCode (beta) and Cursor (beta)": every supported harness, as plain text. */
+/** "Claude Code, Codex, Pi (beta), opencode (beta), ZCode (beta), Cursor (beta) and oh-my-pi (beta)": every supported harness, as plain text. */
 export const SUPPORTED_HARNESSES = SOURCES.map(sourceLabel).join(", ").replace(/, ([^,]*)$/, " and $1");
 
 export type TokenCounts = {

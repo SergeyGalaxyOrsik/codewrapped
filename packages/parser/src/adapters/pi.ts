@@ -5,6 +5,7 @@ import type { Adapter, Candidate, DiscoverContext, Emit } from "../adapter";
 import { basename } from "../builder";
 import { dirNames, isDir, listAll } from "../files";
 import { countUnknown, parseTime, readJsonl, type ParseWarnings } from "../lines";
+import { isOmpTitle } from "./omp";
 
 /**
  * Pi coding agent sessions: ~/.pi/agent/sessions/--<cwd>--/<time>_<id>.jsonl,
@@ -25,7 +26,9 @@ import { countUnknown, parseTime, readJsonl, type ParseWarnings } from "../lines
  * keeps its entries. Labels are re-created with new ids and are not activity.
  *
  * Pi has no marker for print, RPC or SDK runs, so every session counts as
- * interactive.
+ * interactive. oh-my-pi reads the same PI_CODING_AGENT_DIR and
+ * PI_CODING_AGENT_SESSION_DIR, so its sessions can land here. They start
+ * with a title line and are left to the omp adapter.
  */
 const KNOWN_TYPES = new Set([
   "session",
@@ -72,6 +75,8 @@ async function parse(files: readonly string[], emit: Emit, warnings: ParseWarnin
     let cwd: string | null = null;
     /** For usage entries that do not name a model. */
     let model: string | null = null;
+    let first = true;
+    let isOmp = false;
 
     const addUsage = (s: string, t: number, raw: Obj | null, modelName: string | null) => {
       if (!raw) return;
@@ -84,6 +89,9 @@ async function parse(files: readonly string[], emit: Emit, warnings: ParseWarnin
     };
 
     await readJsonl(file, warnings, (e) => {
+      if (first) isOmp = isOmpTitle(e);
+      first = false;
+      if (isOmp) return;
       const type = e.type;
       if (typeof type !== "string" || !KNOWN_TYPES.has(type)) {
         countUnknown(warnings, `pi:${typeof type === "string" ? type : "(no type)"}`);
