@@ -3,14 +3,20 @@ import type { ReactNode } from "react";
 import { markDataUri, site } from "@codewrapped/brand";
 import { AccountNav } from "./Account";
 
-export function Wordmark({ size = 20 }: { size?: number }) {
+/**
+ * The mark and the name. When the header is too narrow for the name, it wraps onto a second
+ * line that the fixed height clips, so only the mark shows, at whatever width that happens.
+ */
+function Wordmark() {
   return (
-    <Link href="/" className="flex items-center gap-2 rounded-[8px]" aria-label="codewrapped home">
-      <img src={markDataUri(Math.round(size * 1.15), "light")} alt="" width={Math.round(size * 1.15)} height={Math.round(size * 1.15)} className="dark:hidden" />
-      <img src={markDataUri(Math.round(size * 1.15), "dark")} alt="" width={Math.round(size * 1.15)} height={Math.round(size * 1.15)} className="hidden dark:block" />
-      <span className="font-medium tracking-[-0.02em]" style={{ fontSize: size }}>
-        codewrapped
-      </span>
+    <Link
+      href="/"
+      className="flex h-8 min-w-0 flex-wrap content-start items-center gap-x-2 overflow-hidden rounded-[8px]"
+      aria-label="codewrapped home"
+    >
+      <img src={markDataUri(23, "light")} alt="" width={23} height={23} className="h-8 w-[23px] max-w-none object-contain dark:hidden" />
+      <img src={markDataUri(23, "dark")} alt="" width={23} height={23} className="hidden h-8 w-[23px] max-w-none object-contain dark:block" />
+      <span className="text-[18px] font-medium leading-8 tracking-[-0.02em] sm:text-[20px]">codewrapped</span>
     </Link>
   );
 }
@@ -18,10 +24,10 @@ export function Wordmark({ size = 20 }: { size?: number }) {
 /** `right` is what signed-out visitors see; signed-in people get a link to their own page there. */
 export function Header({ right }: { right?: ReactNode }) {
   return (
-    <header className="mx-auto flex w-full max-w-5xl items-center justify-between gap-3 px-4 py-5 sm:px-6">
+    <header className="mx-auto flex w-full max-w-5xl items-center justify-between gap-2 px-4 py-5 sm:gap-3 sm:px-6">
       <Wordmark />
-      <nav className="flex items-center gap-1 text-[14px]">
-        <Link href="/leaderboard" className="rounded-[8px] px-3 py-2 text-muted hover:text-fg">
+      <nav className="flex shrink-0 items-center text-[14px] sm:gap-1">
+        <Link href="/leaderboard" className="rounded-[8px] px-2 py-2 text-muted hover:text-fg sm:px-3">
           Leaderboard
         </Link>
         <AccountNav signedOut={right} />
@@ -48,14 +54,14 @@ export function Footer() {
         )}
       </p>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <nav className="flex gap-4">
-          <Link href="/leaderboard" className="rounded-[8px] hover:text-fg">
+        <nav className="-my-1 flex gap-4">
+          <Link href="/leaderboard" className="rounded-[8px] py-1 hover:text-fg">
             Leaderboard
           </Link>
-          <Link href="/settings" className="rounded-[8px] hover:text-fg">
+          <Link href="/settings" className="rounded-[8px] py-1 hover:text-fg">
             Settings
           </Link>
-          <a href={site.repo} className="rounded-[8px] hover:text-fg">
+          <a href={site.repo} className="rounded-[8px] py-1 hover:text-fg">
             Source
           </a>
         </nav>
