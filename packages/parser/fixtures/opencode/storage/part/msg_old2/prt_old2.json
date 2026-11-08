@@ -1,0 +1,1 @@
+{"id":"prt_old2","sessionID":"ses_old","messageID":"msg_old2","type":"step-finish","reason":"stop","cost":0.002,"tokens":{"input":300,"output":40,"reasoning":10,"cache":{"read":0,"write":0}}}

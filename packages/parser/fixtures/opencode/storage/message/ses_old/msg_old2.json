@@ -1,0 +1,1 @@
+{"id":"msg_old2","sessionID":"ses_old","role":"assistant","parentID":"msg_old1","modelID":"gpt-6.1-sol","providerID":"openai","mode":"build","agent":"build","path":{"cwd":"/home/dev/shop","root":"/home/dev/shop"},"cost":0.002,"tokens":{"input":200,"output":25,"reasoning":10,"cache":{"read":0,"write":0}},"time":{"created":1764579660000,"completed":1764579720000}}

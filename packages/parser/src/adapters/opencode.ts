@@ -9,10 +9,16 @@ import { openSnapshot } from "../sqlite";
 import { patchFiles } from "./codex";
 
 /**
- * opencode keeps sessions in $XDG_DATA_HOME/opencode/opencode.db (SQLite,
- * checked on opencode 1.17 and 1.19 logs). Older versions wrote one JSON
- * file per session, message and part under storage/; that path follows the
- * documented layout and is untested on real logs.
+ * opencode keeps sessions in $XDG_DATA_HOME/opencode/opencode.db (SQLite since
+ * 1.2.0, checked on 1.17 and 1.19 logs). Versions 0.6 to 1.1 wrote JSON files:
+ * storage/session/<projectID>/<sessionID>.json, storage/message/<sessionID>/
+ * <messageID>.json and storage/part/<messageID>/<partID>.json. The move to
+ * SQLite copied them and left the files in place, so ids are deduplicated and
+ * the database wins. The JSON path follows the source code and is untested on
+ * real files.
+ *
+ * opencode 2.x adds session_message, which is not read yet: its rows are
+ * reported as unknown so a user can tell.
  *
  * The database is copied with its -wal and -shm files and the copy is opened
  * read-only. Only the session, message and part tables are read; account and
@@ -25,7 +31,43 @@ const str = (v: unknown): string | null => (typeof v === "string" && v.length > 
 const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 const time = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null);
 
-type SessionInfo = { id: string; parent: string | null; directory: string | null; created: number };
+type SessionInfo = {
+  id: string;
+  parent: string | null;
+  directory: string | null;
+  created: number;
+  /** opencode version that wrote the session, e.g. "1.19.5". */
+  version: string | null;
+  /** Started by `opencode run`, judged from the permissions it sets. */
+  automated: boolean;
+};
+
+/** "1.3.16" -> [1, 3, 16]. */
+const versionParts = (v: string | null) => (v ?? "0").split(/[.-]/).slice(0, 3).map((x) => Number.parseInt(x, 10) || 0);
+function atLeast(v: string | null, min: [number, number, number]): boolean {
+  const p = versionParts(v);
+  for (let i = 0; i < 3; i++) if ((p[i] ?? 0) !== min[i]) return (p[i] ?? 0) > min[i]!;
+  return true;
+}
+
+/**
+ * `opencode run` denies the question tool and plan mode for its session, since
+ * nobody is there to answer. The TUI does not. Checked against the opencode
+ * source from 1.1 to 1.19; a heuristic, not a flag.
+ */
+function looksLikeRun(permission: unknown): boolean {
+  let rules: unknown = permission;
+  if (typeof permission === "string") {
+    try {
+      rules = JSON.parse(permission);
+    } catch {
+      return false;
+    }
+  }
+  if (!Array.isArray(rules)) return false;
+  const denied = new Set(rules.map(obj).filter((r) => r?.action === "deny" && r.pattern === "*").map((r) => r!.permission));
+  return denied.has("question") && denied.has("plan_enter") && denied.has("plan_exit");
+}
 type MessageInfo = { id: string; session: string; data: Obj };
 type PartInfo = { id: string; message: string; session: string; data: Obj };
 
@@ -56,11 +98,23 @@ function parseData(raw: unknown, warnings: ParseWarnings): Obj | null {
 async function readDatabase(file: string, store: Store, warnings: ParseWarnings): Promise<void> {
   const db = await openSnapshot(file);
   try {
-    for (const r of db.all("select id, parent_id, directory, time_created from session")) {
+    for (const r of db.all("select id, parent_id, directory, time_created, version, permission from session")) {
       warnings.lines += 1;
       const id = str(r.id);
       if (!id) continue;
-      put(store.sessions, id, { id, parent: str(r.parent_id), directory: str(r.directory), created: num(r.time_created) });
+      put(store.sessions, id, {
+        id,
+        parent: str(r.parent_id),
+        directory: str(r.directory),
+        created: num(r.time_created),
+        version: str(r.version),
+        automated: looksLikeRun(r.permission),
+      });
+    }
+    const tables = new Set(db.all("select name from sqlite_master where type = 'table'").map((r) => r.name));
+    if (tables.has("session_message")) {
+      const n = num(db.all("select count(*) as n from session_message")[0]?.n);
+      if (n > 0) warnings.unknownEvents["opencode:(2.x session_message rows, not read yet)"] = n;
     }
     for (const r of db.all("select id, session_id, data from message")) {
       warnings.lines += 1;
@@ -104,6 +158,8 @@ async function readJsonFile(file: string, store: Store, warnings: ParseWarnings)
       parent: str(d.parentID),
       directory: str(d.directory),
       created: num(obj(d.time)?.created),
+      version: str(d.version),
+      automated: looksLikeRun(d.permission),
     });
   } else countUnknown(warnings, "opencode:(unknown json)");
 }
@@ -143,13 +199,15 @@ async function parse(files: readonly string[], emit: Emit, warnings: ParseWarnin
   // Sessions whose messages exist but whose session row is gone still count, without a folder.
   const sessionIds = [...new Set([...store.sessions.keys(), ...messagesOf.keys()])];
   const sessions = sessionIds
-    .map((id) => store.sessions.get(id) ?? { id, parent: null, directory: null, created: 0 })
+    .map((id) => store.sessions.get(id) ?? { id, parent: null, directory: null, created: 0, version: null, automated: false })
     .sort((a, b) => a.created - b.created || a.id.localeCompare(b.id));
 
   for (const s of sessions) {
     const session = s.id;
     // Subagent sessions (the task tool) have a parent; their time and tokens go to the root session.
-    emit({ type: "session", session, parent: s.parent });
+    emit({ type: "session", session, parent: s.parent, automated: s.automated });
+    // From 1.3.16 reasoning is reported apart from output; before, output already held it.
+    const reasoningApart = atLeast(s.version, [1, 3, 16]);
     const messages = (messagesOf.get(session) ?? []).sort((a, b) => created(a) - created(b) || a.id.localeCompare(b.id));
     for (const m of messages) {
       const d = m.data;
@@ -169,16 +227,16 @@ async function parse(files: readonly string[], emit: Emit, warnings: ParseWarnin
       if (t !== null) emit({ type: "tick", session, t, cwd, active: true });
       if (done !== null) emit({ type: "tick", session, t: done, cwd });
 
-      const tokens = obj(d.tokens);
-      const cache = obj(tokens?.cache);
-      // Reasoning is reported apart from output and billed as output.
-      const usage = {
-        input: num(tokens?.input),
-        output: num(tokens?.output) + num(tokens?.reasoning),
-        cacheRead: num(cache?.read),
-        cacheWrite: num(cache?.write),
-        cacheWriteLong: 0,
-      };
+      // A message's tokens are its last step only, so steps are summed; cost is summed by opencode already.
+      const steps = (partsOf.get(m.id) ?? []).filter((p) => p.data.type === "step-finish").map((p) => obj(p.data.tokens));
+      const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cacheWriteLong: 0 };
+      for (const tokens of steps.length > 0 ? steps : [obj(d.tokens)]) {
+        const cache = obj(tokens?.cache);
+        usage.input += num(tokens?.input);
+        usage.output += num(tokens?.output) + (reasoningApart ? num(tokens?.reasoning) : 0);
+        usage.cacheRead += num(cache?.read);
+        usage.cacheWrite += num(cache?.write);
+      }
       const at = done ?? t;
       if (at !== null && usage.input + usage.output + usage.cacheRead + usage.cacheWrite > 0) {
         const model = str(d.modelID) ?? "unknown";

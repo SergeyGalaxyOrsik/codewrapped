@@ -1,31 +1,49 @@
-import { open, readdir } from "node:fs/promises";
+import { open, readdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { shellCategory, toolCategory } from "@codewrapped/stats";
 import type { Adapter, Candidate, DiscoverContext, Emit } from "../adapter";
 import { basename } from "../builder";
-import { dirNames, listAll } from "../files";
+import { dirNames, isDir, listAll } from "../files";
 import { countUnknown, parseTime, readJsonl, type ParseWarnings } from "../lines";
 
 /**
- * Pi coding agent sessions: ~/.pi/agent/sessions/--<cwd>--/<time>_<id>.jsonl.
- * Format version 3, checked on Pi 0.84 logs. The first line is a session
- * header with the working directory; every other line is an entry with id
- * and parentId, which form a tree: branching from an earlier point adds
- * entries that point back at it. Every entry counts, not only the branch
- * that is active now.
+ * Pi coding agent sessions: ~/.pi/agent/sessions/--<cwd>--/<time>_<id>.jsonl,
+ * or flat in a session folder set with PI_CODING_AGENT_SESSION_DIR or
+ * sessionDir in settings.json. Format version 3, checked on real Pi logs.
+ *
+ * The first line is a session header with the working directory; every other
+ * line is an entry with id and parentId, which form a tree: /tree continues
+ * from an earlier entry in the same file. Every entry counts, not only the
+ * branch that is active now. /fork writes a new file that copies the path it
+ * forked from with the same ids and timestamps; those copies count once.
+ *
+ * Pi has no marker for print, RPC or SDK runs, so every session counts as
+ * interactive.
  */
 const KNOWN_TYPES = new Set([
   "session",
   "message",
   "model_change",
   "thinking_level_change",
+  "usage",
   "compaction",
+  "context_edit",
   "branch_summary",
   "custom",
   "custom_message",
   "label",
   "session_info",
 ]);
+
+/** Model calls outside assistant messages: cache warming, compaction and branch summaries. */
+const USAGE_ENTRIES = new Set(["usage", "compaction", "branch_summary"]);
+
+/** A /skill:name expansion is stored as a user message but was not typed as one. */
+function isTypedPrompt(message: Obj): boolean {
+  const content = message.content;
+  const text = typeof content === "string" ? content : Array.isArray(content) ? str(obj(content[0])?.text) : null;
+  return !(text ?? "").trimStart().startsWith("<skill name=");
+}
 
 type Obj = Record<string, unknown>;
 const obj = (v: unknown): Obj | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : null);
@@ -43,6 +61,17 @@ async function parse(files: readonly string[], emit: Emit, warnings: ParseWarnin
   for (const file of files) {
     let session: string | null = null;
     let cwd: string | null = null;
+    /** For usage entries that do not name a model. */
+    let model: string | null = null;
+
+    const addUsage = (s: string, t: number, raw: Obj | null, modelName: string | null) => {
+      if (!raw) return;
+      // input excludes cache; output includes reasoning: totalTokens = input + output + cacheRead + cacheWrite.
+      const u = { input: num(raw.input), output: num(raw.output), cacheRead: num(raw.cacheRead), cacheWrite: num(raw.cacheWrite), cacheWriteLong: 0 };
+      if (u.input + u.output + u.cacheRead + u.cacheWrite === 0) return;
+      const cost = obj(raw.cost);
+      emit({ type: "usage", session: s, t, model: modelName ?? "unknown", usage: u, costUsd: cost ? num(cost.total) : null, cwd });
+    };
 
     await readJsonl(file, warnings, (e) => {
       const type = e.type;
@@ -72,31 +101,20 @@ async function parse(files: readonly string[], emit: Emit, warnings: ParseWarnin
         seenEntries.add(key);
       }
 
+      if (type === "model_change") model = str(e.modelId) ?? model;
       const message = type === "message" ? obj(e.message) : null;
       const role = str(message?.role);
-      const prompt = role === "user";
+      const prompt = role === "user" && message !== null && isTypedPrompt(message);
       const reply = role === "assistant";
       emit({ type: "tick", session, t, cwd, active: prompt || reply });
       if (prompt) emit({ type: "prompt", session, t });
+      if (USAGE_ENTRIES.has(type)) addUsage(session, t, obj(e.usage), str(e.model) ?? str(e.modelId) ?? model);
       if (!reply || !message) return;
 
-      const usage = obj(message.usage);
-      if (usage) {
-        // output includes reasoning: totalTokens = input + output + cacheRead + cacheWrite.
-        const u = {
-          input: num(usage.input),
-          output: num(usage.output),
-          cacheRead: num(usage.cacheRead),
-          cacheWrite: num(usage.cacheWrite),
-          cacheWriteLong: 0,
-        };
-        if (u.input + u.output + u.cacheRead + u.cacheWrite > 0) {
-          // The model that answered, when a router picked it, else the one asked for.
-          const model = str(message.responseModel) ?? str(message.model) ?? "unknown";
-          const cost = obj(usage.cost);
-          emit({ type: "usage", session, t, model, usage: u, costUsd: cost ? num(cost.total) : null, cwd });
-        }
-      }
+      // The model that answered, when a router picked it, else the one asked for.
+      const answered = str(message.responseModel) ?? str(message.model);
+      model = str(message.model) ?? model;
+      addUsage(session, t, obj(message.usage), answered ?? model);
 
       for (const raw of Array.isArray(message.content) ? message.content : []) {
         const block = obj(raw);
@@ -145,21 +163,44 @@ export async function looksLikePiHome(root: string): Promise<boolean> {
 
 const SUBDIRS = ["sessions"];
 
-/** $PI_CODING_AGENT_DIR, ~/.pi/agent and saved folders. */
-function discover(ctx: DiscoverContext): Candidate[] {
+/** sessionDir from an agent folder's settings.json. Only that one key is read. */
+async function settingsSessionDir(agentDir: string, home: string): Promise<string | null> {
+  try {
+    const settings = obj(JSON.parse(await readFile(join(agentDir, "settings.json"), "utf8")));
+    const dir = str(settings?.sessionDir)?.replace(/^~(?=\/|$)/, home);
+    return dir ? resolve(agentDir, dir) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * $PI_CODING_AGENT_SESSION_DIR, then $PI_CODING_AGENT_DIR and ~/.pi/agent with
+ * their sessions/ folder or the sessionDir their settings.json names, then
+ * saved folders and PI_CODING_AGENT_DIR values in shell files.
+ */
+async function discover(ctx: DiscoverContext): Promise<Candidate[]> {
   const at = (root: string, via: Candidate["via"]): Candidate => ({
     root,
     dirs: SUBDIRS.map((s) => join(resolve(root), s)),
     via,
     verify: false,
   });
-  const fromEnv = ctx.env.PI_CODING_AGENT_DIR?.trim();
-  return [
-    ...(fromEnv ? [at(fromEnv, "env")] : []),
-    at(join(ctx.home, ".pi", "agent"), "default"),
-    ...ctx.saved.map((r) => at(r, "saved")),
-    ...ctx.shellValues("PI_CODING_AGENT_DIR").map((r) => ({ ...at(r, "shell"), verify: true })),
-  ];
+  const out: Candidate[] = [];
+  const sessionDir = ctx.env.PI_CODING_AGENT_SESSION_DIR?.trim();
+  if (sessionDir) out.push({ root: sessionDir, dirs: [resolve(sessionDir)], via: "env", verify: false });
+  const agentDir = ctx.env.PI_CODING_AGENT_DIR?.trim();
+  for (const [root, via] of [
+    ...(agentDir ? [[agentDir, "env"] as const] : []),
+    [join(ctx.home, ".pi", "agent"), "default"] as const,
+  ]) {
+    const custom = await settingsSessionDir(resolve(root), ctx.home);
+    out.push(custom ? { root: custom, dirs: [custom], via, verify: false } : at(root, via));
+  }
+  // A saved folder is an agent folder with sessions/, or a custom session folder itself.
+  for (const r of ctx.saved) out.push((await isDir(join(r, "sessions"))) ? at(r, "saved") : { root: r, dirs: [resolve(r)], via: "saved", verify: false });
+  out.push(...ctx.shellValues("PI_CODING_AGENT_DIR").map((r) => ({ ...at(r, "shell"), verify: true })));
+  return out;
 }
 
 export const pi: Adapter = {

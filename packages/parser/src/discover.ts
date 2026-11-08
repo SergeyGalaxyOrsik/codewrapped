@@ -130,7 +130,7 @@ export async function findLogFolders(
       }
       continue;
     }
-    const candidates = a.discover({
+    const candidates = await a.discover({
       env,
       home,
       saved: overrides.saved?.[a.id] ?? [],
