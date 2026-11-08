@@ -9,12 +9,9 @@ import { buttonPrimary, Footer, Header } from "@/components/Chrome";
 import { CopyCommand } from "@/components/CopyCommand";
 import { getProfile, PERIOD_LABELS } from "@/lib/api";
 
-export const revalidate = 60;
-// Profiles render on first request and are then cached (ISR).
-export const dynamicParams = true;
-export async function generateStaticParams() {
-  return [];
-}
+// Rendered per request from the API's cache. Per-URL ISR served each period from its own stale copy,
+// so a renamed profile showed the old name on some periods and the new one on others.
+export const dynamic = "force-dynamic";
 
 type Params = { params: Promise<{ handle: string; period: string }> };
 

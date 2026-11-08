@@ -26,7 +26,7 @@ Run the command and you get `codewrapped.png` and a summary in the terminal:
 
 ## Private by default
 
-- **What it reads:** session logs in `~/.claude` and `~/.codex`, and `.git/config` to name each repository.
+- **What it reads:** session logs in `~/.claude` and `~/.codex`, and from `.git/config` only the repository name from the remote URL, never credentials.
 - **What it counts:** time, tokens, tool calls, file and repository names.
 - **What it never keeps:** your prompts, your code, full paths.
 - **Without an account:** it makes zero network requests.

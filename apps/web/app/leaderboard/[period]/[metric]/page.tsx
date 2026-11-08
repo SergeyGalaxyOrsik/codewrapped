@@ -18,10 +18,15 @@ const PERIODS = Object.keys(BOARD_PERIOD_LABELS) as BoardPeriod[];
 const METRICS = Object.keys(BOARD_METRIC_LABELS) as BoardMetric[];
 const href = (p: BoardPeriod, m: BoardMetric) => (p === "week" && m === "hours" ? "/leaderboard" : `/leaderboard/${p}/${m}`);
 
-export const metadata: Metadata = {
-  title: "Leaderboard",
-  description: "Who spent the most hours with coding agents this week. Self-reported from local logs.",
-};
+export async function generateMetadata({ params }: Params): Promise<Metadata> {
+  const { period, metric } = (await params) as { period: BoardPeriod; metric: BoardMetric };
+  const valid = PERIODS.includes(period) && METRICS.includes(metric);
+  return {
+    title: "Leaderboard",
+    description: "Who spent the most hours with coding agents this week. Self-reported from local logs.",
+    alternates: valid ? { canonical: href(period, metric) } : undefined,
+  };
+}
 
 function Switch<T extends string>({ items, current, label, link }: { items: T[]; current: T; label: (x: T) => string; link: (x: T) => string }) {
   return (

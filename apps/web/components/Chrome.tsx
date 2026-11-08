@@ -39,11 +39,9 @@ export function Footer() {
         {AUTHOR_X && (
           <>
             {" "}
-            Follow{" "}
-            <a href={`https://x.com/${AUTHOR_X}`} className="rounded-[8px] underline underline-offset-4">
-              @{AUTHOR_X}
-            </a>{" "}
-            for the next one.
+            <a href={`https://x.com/${AUTHOR_X}`} className="rounded-[8px] underline decoration-border underline-offset-4 transition-colors hover:decoration-fg">
+              Follow @{AUTHOR_X} on X
+            </a>
           </>
         )}
       </p>

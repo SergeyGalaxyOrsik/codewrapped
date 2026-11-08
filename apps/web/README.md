@@ -32,6 +32,7 @@ Cookies are per host, not per port, so a session from `localhost:3000` works on 
    - `NEXT_PUBLIC_API_URL=https://api.codewrapped.app`
    - `NEXT_PUBLIC_SITE_URL=https://codewrapped.app`
    - `NEXT_PUBLIC_HERO_HANDLE=` your handle, once your profile has data (optional)
-4. Add the domain `codewrapped.app`.
+   - `NEXT_PUBLIC_AUTHOR_X_HANDLE=` your X handle, for the footer link (optional)
+4. Add the domains `codewrapped.app` and `www.codewrapped.app`. Make the apex the primary domain and set `www` to **No redirect**: the app itself answers `www` with a 301 to `codewrapped.app`. If Vercel still redirects the apex to `www`, the two redirects loop.
 
 Preview deployments run on `*.vercel.app`, which does not share cookies with `api.codewrapped.app`, so sign-in only works on the production domain. Public pages and OG images work everywhere.

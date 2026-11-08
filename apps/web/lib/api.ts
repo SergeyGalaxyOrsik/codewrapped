@@ -1,7 +1,16 @@
+import { site } from "@codewrapped/brand";
 import type { Period, PublicProfile } from "@codewrapped/stats";
 
-export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000").replace(/\/$/, "");
-export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3001").replace(/\/$/, "");
+const dev = process.env.NODE_ENV !== "production";
+
+export const API_URL = (process.env.NEXT_PUBLIC_API_URL || (dev ? "http://localhost:3000" : site.apiUrl)).replace(/\/$/, "");
+
+/** This site's origin, for absolute links and OG images. Production builds never fall back to localhost, and public hosts are always https. */
+export const SITE_URL = (() => {
+  const url = new URL(process.env.NEXT_PUBLIC_SITE_URL || (dev ? "http://localhost:3001" : site.url));
+  if (url.hostname !== "localhost" && !/^[\d.]+$/.test(url.hostname)) url.protocol = "https:";
+  return url.origin;
+})();
 
 export const PERIOD_LABELS: Record<Period, string> = {
   "7d": "7 days",
@@ -36,9 +45,17 @@ export async function getBoard(period: BoardPeriod, metric: BoardMetric): Promis
   }
 }
 
-/** Server-side fetch of a public profile, cached for 60 seconds. Null when the handle does not exist. */
-export async function getProfile(handle: string, period: Period): Promise<PublicProfile | null> {
-  const res = await fetch(`${API_URL}/u/${encodeURIComponent(handle)}?period=${period}`, { next: { revalidate: 60 } });
+/**
+ * Server-side fetch of a public profile. Null when the handle does not exist.
+ * Uncached by default: the API keeps its own cache and clears it when the owner
+ * syncs or edits the profile, so every period shows the same name and numbers.
+ * Pass `revalidate` (seconds) where a slightly stale profile is fine.
+ */
+export async function getProfile(handle: string, period: Period, opts: { revalidate?: number } = {}): Promise<PublicProfile | null> {
+  const res = await fetch(
+    `${API_URL}/u/${encodeURIComponent(handle)}?period=${period}`,
+    opts.revalidate === undefined ? { cache: "no-store" } : { next: { revalidate: opts.revalidate } },
+  );
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Profile request failed with ${res.status}`);
   return (await res.json()) as PublicProfile;

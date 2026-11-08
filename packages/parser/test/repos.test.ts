@@ -9,6 +9,17 @@ describe("repoNameFromUrl", () => {
     expect(repoNameFromUrl("git@github.com:acme/payments-api.git")).toBe("payments-api");
     expect(repoNameFromUrl("https://github.com/acme/web/")).toBe("web");
     expect(repoNameFromUrl("ssh://git@gitlab.example.com:2222/group/sub/tool.git")).toBe("tool");
+    expect(repoNameFromUrl("/srv/git/notes.git")).toBe("notes");
+  });
+
+  it("never returns credentials from the URL", () => {
+    expect(repoNameFromUrl("https://user:token@host/owner/repo.git")).toBe("repo");
+    expect(repoNameFromUrl("https://x-access-token:ghp_secret@github.com/owner/repo")).toBe("repo");
+    expect(repoNameFromUrl("https://user:token@host/owner/repo.git?ref=main#readme")).toBe("repo");
+    // No path at all: nothing to name, and the userinfo must not leak as the name.
+    expect(repoNameFromUrl("https://user:token@host")).toBeNull();
+    expect(repoNameFromUrl("https://user:token@host/")).toBeNull();
+    expect(repoNameFromUrl("user:token@host")).toBeNull();
   });
 });
 
@@ -43,6 +54,10 @@ describe("createGitRepoResolver", () => {
     const local = join(base, "notes-repo");
     await mkdir(join(local, ".git"), { recursive: true });
     await writeFile(join(local, ".git", "config"), "[core]\n\tbare = false\n");
+    // A remote with credentials in the URL.
+    const withToken = join(base, "token-checkout");
+    await mkdir(join(withToken, ".git"), { recursive: true });
+    await writeFile(join(withToken, ".git", "config"), '[remote "origin"]\n\turl = https://user:token@host/owner/repo.git\n');
     // A folder that is not a repository.
     const plain = join(base, "plain");
     await mkdir(plain);
@@ -52,6 +67,7 @@ describe("createGitRepoResolver", () => {
     expect(resolve(join(main, "packages", "web"))).toBe("payments-api");
     expect(resolve(wt)).toBe("payments-api");
     expect(resolve(local)).toBe("notes-repo");
+    expect(resolve(withToken)).toBe("repo");
     // The temp dir itself is inside no repository.
     expect(resolve(plain)).toBeNull();
     // Gone folders fall back to the path.

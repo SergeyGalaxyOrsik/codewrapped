@@ -7,11 +7,21 @@ import { basename, dirname, join, resolve } from "node:path";
  */
 export type RepoResolver = (cwd: string | null) => string | null;
 
-/** owner/name from a remote URL: git@github.com:o/name.git, https://host/o/name, ... */
+/**
+ * The repository name from a remote URL: git@github.com:o/name.git,
+ * https://user:token@host/o/name, ... Only the last path segment is kept, so
+ * owners, hosts and any credentials in the URL never leave this function.
+ */
 export function repoNameFromUrl(url: string): string | null {
-  const clean = url.trim().replace(/\/+$/, "").replace(/\.git$/, "");
-  const name = clean.split(/[/:]/).pop();
-  return name ? name : null;
+  const s = url.trim().replace(/[?#].*$/, "");
+  // scheme://[user[:password]@]host[:port]/path -> path
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\/[^/]*(.*)$/i.exec(s);
+  // [user@]host:path (scp-like), but not a Windows drive like C:\repos
+  const scpLike = /^([^/\\]{2,}?):(.*)$/.exec(s);
+  const path = withScheme ? withScheme[1]! : scpLike ? scpLike[2]! : s;
+  const name = path.replace(/[\\/]+$/, "").replace(/\.git$/, "").split(/[\\/]/).pop();
+  // A name with @ or : is a host or credentials, not a repository.
+  return name && !/[@:]/.test(name) ? name : null;
 }
 
 const TEMP_DIRS = [/^\/tmp\//, /^\/private\/tmp\//, /^\/private\/var\/folders\//, /^\/var\/folders\//, /[\\/]Temp[\\/]/i];

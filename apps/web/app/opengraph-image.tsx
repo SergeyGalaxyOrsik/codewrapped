@@ -9,7 +9,7 @@ export const revalidate = 3600;
 
 export default async function Image() {
   const handle = process.env.NEXT_PUBLIC_HERO_HANDLE;
-  const profile = handle ? await getProfile(handle, "30d").catch(() => null) : null;
+  const profile = handle ? await getProfile(handle, "30d", { revalidate: 300 }).catch(() => null) : null;
   if (profile) return cardImage(profile.summary, profile.profile.handle);
   return cardImage(exampleSummary(new Date().toISOString().slice(0, 10)), null);
 }

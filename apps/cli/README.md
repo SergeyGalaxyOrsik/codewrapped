@@ -8,7 +8,7 @@ npx codewrapped
 
 ![An example codewrapped card](https://raw.githubusercontent.com/SergeyGalaxyOrsik/codewrapped/main/docs/card-light.png)
 
-- **What it reads:** session logs in `~/.claude` and `~/.codex`, and `.git/config` to name each repository.
+- **What it reads:** session logs in `~/.claude` and `~/.codex`, and from `.git/config` only the repository name from the remote URL, never credentials.
 - **What it never keeps:** your prompts, your code, full paths.
 - **Without an account:** it makes zero network requests.
 
