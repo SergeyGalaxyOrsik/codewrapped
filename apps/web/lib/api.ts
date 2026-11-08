@@ -35,10 +35,18 @@ export type Board = {
 export const BOARD_PERIOD_LABELS: Record<BoardPeriod, string> = { week: "This week", month: "This month" };
 export const BOARD_METRIC_LABELS: Record<BoardMetric, string> = { hours: "Hours", streak: "Streak", tokens: "Tokens" };
 
-/** Server-side fetch of a leaderboard, cached for 60 seconds. Null when the API is down. */
-export async function getBoard(period: BoardPeriod, metric: BoardMetric): Promise<Board | null> {
+/**
+ * Server-side fetch of a leaderboard. Null when the API is down.
+ * Uncached by default, like profiles: the API keeps the board in memory and clears it
+ * on every sync and opt-in, so the table agrees with "You are #N" above it.
+ * Pass `revalidate` (seconds) where a slightly stale board is fine.
+ */
+export async function getBoard(period: BoardPeriod, metric: BoardMetric, opts: { revalidate?: number } = {}): Promise<Board | null> {
   try {
-    const res = await fetch(`${API_URL}/leaderboard?period=${period}&metric=${metric}`, { next: { revalidate: 60 } });
+    const res = await fetch(
+      `${API_URL}/leaderboard?period=${period}&metric=${metric}`,
+      opts.revalidate === undefined ? { cache: "no-store" } : { next: { revalidate: opts.revalidate } },
+    );
     return res.ok ? ((await res.json()) as Board) : null;
   } catch {
     return null;

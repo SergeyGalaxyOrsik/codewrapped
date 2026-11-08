@@ -145,7 +145,7 @@ function Title({ children, id }: { children: ReactNode; id?: string }) {
 }
 
 export default async function Home() {
-  const [hero, board] = await Promise.all([heroCard(), getBoard("week", "hours")]);
+  const [hero, board] = await Promise.all([heroCard(), getBoard("week", "hours", { revalidate: 300 })]);
   const showBoard = board !== null && board.participants >= MIN_BOARD_PEOPLE && board.entries.length > 0;
 
   return (

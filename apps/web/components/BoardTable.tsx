@@ -9,7 +9,8 @@ export function BoardTable({ board, limit }: { board: Board; limit?: number }) {
     <ol className="flex flex-col">
       {rows.map((e) => (
         <li key={e.handle} className="flex items-center gap-3 border-t border-border py-3 first:border-t-0">
-          <span className="w-8 shrink-0 text-right font-mono text-[14px] text-muted">{e.rank}</span>
+          {/* Left-aligned so the column starts on the page's left edge; 3ch fits rank 100. */}
+          <span className="w-[3ch] shrink-0 font-mono text-[14px] text-muted">{e.rank}</span>
           {e.avatarUrl ? (
             <img src={e.avatarUrl} alt="" width={28} height={28} className="size-7 shrink-0 rounded-full border border-border" />
           ) : (

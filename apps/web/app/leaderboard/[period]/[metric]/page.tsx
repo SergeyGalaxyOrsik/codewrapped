@@ -6,11 +6,8 @@ import { Footer, Header } from "@/components/Chrome";
 import { MyRank } from "@/components/MyRank";
 import { BOARD_METRIC_LABELS, BOARD_PERIOD_LABELS, getBoard, type BoardMetric, type BoardPeriod } from "@/lib/api";
 
-export const revalidate = 60;
-export const dynamicParams = true;
-export async function generateStaticParams() {
-  return [];
-}
+// Rendered on every request: the API caches the board and drops it the moment someone syncs or opts in.
+export const dynamic = "force-dynamic";
 
 type Params = { params: Promise<{ period: string; metric: string }> };
 
