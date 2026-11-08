@@ -28,13 +28,15 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=20.12"
   },
   "scripts": {
     "build": "tsup",
+    "prepublishOnly": "tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
