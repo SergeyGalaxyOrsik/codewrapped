@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeModelId, priceFor, requestCost } from "../src/index";
+import { normalizeModelId, priceFor, requestCost, usageCost } from "../src/index";
 
 const zero = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cacheWriteLong: 0 };
 
@@ -10,6 +10,29 @@ describe("pricing", () => {
     expect(normalizeModelId("claude-opus-5-5[1m]")).toBe("claude-opus-5-5");
     expect(normalizeModelId("claude-sonnet-5@20260101")).toBe("claude-sonnet-5");
     expect(normalizeModelId("gpt-6.1-sol")).toBe("gpt-6.1-sol");
+    expect(normalizeModelId("openrouter/z-ai/glm-4.6")).toBe("glm-4.6");
+    expect(normalizeModelId("moonshotai/Kimi-K3")).toBe("kimi-k3");
+  });
+
+  it("prices GLM, DeepSeek and Kimi, with cache writes at input", () => {
+    const m = { ...zero, input: 1_000_000, cacheRead: 1_000_000, output: 1_000_000 };
+    expect(requestCost("glm-4.6", m)).toBeCloseTo(0.6 + 0.11 + 2.2, 10);
+    expect(requestCost("deepseek/deepseek-v4-pro", m)).toBeCloseTo(1.32 + 0.044 + 3.96, 10);
+    expect(requestCost("kimi-k3", { ...zero, cacheWrite: 1_000_000, cacheWriteLong: 1_000_000 })).toBeCloseTo(3 + 6, 10);
+    expect(requestCost("glm-4.5-flash", m)).toBe(0);
+    // Retired, no published price.
+    expect(requestCost("deepseek-chat", m)).toBeNull();
+  });
+
+  it("prefers the cost a harness recorded", () => {
+    const u = { ...zero, output: 1_000_000 };
+    expect(usageCost("claude-opus-5-5", u, 1.5)).toBe(1.5);
+    expect(usageCost("some-local-model", u, 0.25)).toBe(0.25);
+    expect(usageCost("claude-opus-5-5", u)).toBe(20);
+    // A recorded 0 is a subscription or free plan: the table wins when it knows the model.
+    expect(usageCost("claude-opus-5-5", u, 0)).toBe(20);
+    expect(usageCost("some-local-model", u, 0)).toBe(0);
+    expect(usageCost("some-local-model", u, null)).toBeNull();
   });
 
   it("does not confuse a model with a newer point release", () => {

@@ -2,8 +2,8 @@ import {
   emptyAggregate,
   emptyMask,
   encodeMask,
-  requestCost,
   setRange,
+  usageCost,
   type DailyAggregate,
   type MinuteMask,
   type RequestUsage,
@@ -76,7 +76,8 @@ export class DayBuilder {
     b.files[name] = (b.files[name] ?? 0) + 1;
   }
 
-  addUsage(ms: number, model: string, u: RequestUsage, repo: string | null = null): void {
+  /** reportedUsd is the cost the harness recorded, when it records one. */
+  addUsage(ms: number, model: string, u: RequestUsage, repo: string | null = null, reportedUsd?: number | null): void {
     const b = this.at(ms);
     const cacheWrite = u.cacheWrite + u.cacheWriteLong;
     if (repo) (b.repos[repo] ??= { minutes: 0, tokens: 0 }).tokens += u.input + u.output + cacheWrite;
@@ -87,7 +88,7 @@ export class DayBuilder {
     const m = (b.models[model] ??= { tokens: 0, cacheRead: 0, costUsd: null });
     m.tokens += u.input + u.output + cacheWrite;
     m.cacheRead += u.cacheRead;
-    const cost = requestCost(model, u);
+    const cost = usageCost(model, u, reportedUsd);
     if (cost !== null) m.costUsd = (m.costUsd ?? 0) + cost;
   }
 

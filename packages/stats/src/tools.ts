@@ -1,22 +1,35 @@
-/** Tool names that run shell commands, across Claude Code and Codex. */
-const SHELL = new Set(["bash", "shell", "exec_command", "write_stdin", "shell_command", "local_shell", "bashoutput", "killshell", "killbash"]);
+/**
+ * Tool categories. Rows keep raw tool names, and the category is derived from
+ * the name here, so the server can categorize synced rows the same way and
+ * old rows pick up names added later.
+ */
+export const TOOL_CATEGORIES = ["edit", "read", "search", "shell", "web", "other"] as const;
+export type ToolCategory = (typeof TOOL_CATEGORIES)[number];
 
-/** Tools that read or search without changing files. */
-const READ = new Set(["read", "grep", "glob", "ls", "notebookread", "webfetch", "websearch", "web_search", "web__run", "view_image", "find"]);
+/** Lowercased raw names per category, across harnesses. Anything else is "other". */
+const NAMES: Record<Exclude<ToolCategory, "other">, string[]> = {
+  // Claude Code: Edit, MultiEdit, Write, NotebookEdit. Codex: apply_patch.
+  edit: ["edit", "multiedit", "write", "notebookedit", "apply_patch"],
+  // Claude Code: Read, LS, NotebookRead. Codex: view_image.
+  read: ["read", "ls", "notebookread", "view_image"],
+  // Claude Code: Grep, Glob. Codex: find.
+  search: ["grep", "glob", "find"],
+  // Claude Code: Bash, BashOutput, KillShell. Codex: shell, exec_command, write_stdin, local_shell.
+  shell: ["bash", "shell", "exec_command", "write_stdin", "shell_command", "local_shell", "bashoutput", "killshell", "killbash"],
+  // Claude Code: WebFetch, WebSearch. Codex: web_search, web__run.
+  web: ["webfetch", "websearch", "web_search", "web__run"],
+};
 
-/** Tools that change files. These are the tools counted in `files`. */
-const EDIT = new Set(["edit", "multiedit", "write", "notebookedit", "apply_patch"]);
+const CATEGORY = new Map<string, ToolCategory>();
+for (const [category, names] of Object.entries(NAMES)) for (const n of names) CATEGORY.set(n, category as ToolCategory);
 
-export type ToolKind = "shell" | "read" | "edit" | "other";
-
-export function toolKind(name: string): ToolKind {
-  const n = name.toLowerCase();
-  if (SHELL.has(n)) return "shell";
-  if (READ.has(n)) return "read";
-  if (EDIT.has(n)) return "edit";
-  return "other";
+export function toolCategory(name: string): ToolCategory {
+  return CATEGORY.get(name.toLowerCase()) ?? "other";
 }
 
-export function isEditTool(name: string): boolean {
-  return EDIT.has(name.toLowerCase());
+/** Calls per category from raw-name counts. */
+export function toolCategories(tools: Record<string, number>): Record<ToolCategory, number> {
+  const out = Object.fromEntries(TOOL_CATEGORIES.map((c) => [c, 0])) as Record<ToolCategory, number>;
+  for (const [name, n] of Object.entries(tools)) out[toolCategory(name)] += n;
+  return out;
 }

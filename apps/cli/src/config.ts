@@ -1,3 +1,4 @@
+import type { Source } from "@codewrapped/stats";
 import { randomBytes } from "node:crypto";
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -12,7 +13,7 @@ export type Config = {
   /** Last local day uploaded, per API. */
   lastSyncedDay?: Record<string, string>;
   /** Account folders with logs found on earlier runs. Read again by later runs and sync. Never uploaded. */
-  logFolders?: { claude?: string[]; codex?: string[] };
+  logFolders?: Partial<Record<Source, string[]>>;
 };
 
 export type AuthFile = { token: string; handle: string | null; apiUrl: string; createdAt: string };

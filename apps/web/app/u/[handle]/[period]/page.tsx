@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { formatCompact, formatHours, formatInt, formatShare, formatUsd, PERIODS, type Period, type PublicProfile } from "@codewrapped/stats";
+import { formatCompact, formatHours, formatInt, formatShare, formatUsd, harnessSplit, PERIODS, type Period, type PublicProfile } from "@codewrapped/stats";
 import { formatRange, periodLabel } from "@codewrapped/card/element";
 import { Calendar } from "@/components/Calendar";
 import { Card } from "@/components/Card";
@@ -63,8 +63,9 @@ export default async function ProfilePage({ params }: Params) {
   const { data, period } = loaded;
   const { profile, summary: s, allTime } = data;
   const t = s.totals;
-  const sourceTotal = s.bySource.claude.activeMinutes + s.bySource.codex.activeMinutes;
-  const share = (m: number) => (sourceTotal > 0 ? Math.round((m / sourceTotal) * 100) : 0);
+  // Top 3 harnesses by wall-clock time and the rest as "other". Shades step down with rank.
+  const split = harnessSplit(s.bySource, "activeMinutes");
+  const SHADES = [1, 0.55, 0.3, 0.15];
 
   return (
     <>
@@ -123,17 +124,17 @@ export default async function ProfilePage({ params }: Params) {
           </Section>
         )}
 
-        {t.activeMinutes + t.tokens.headline > 0 && (
-          <Section title="Claude Code and Codex">
+        {split.length > 0 && (
+          <Section title="Agents">
             <div className="flex h-2 w-full overflow-hidden rounded-full bg-border" aria-hidden>
-              <div className="h-full bg-fg" style={{ width: `${share(s.bySource.claude.activeMinutes)}%` }} />
-              <div className="h-full bg-muted" style={{ width: `${share(s.bySource.codex.activeMinutes)}%` }} />
+              {split.map((h, i) => (
+                <div key={h.source} className="h-full bg-fg" style={{ width: `${h.share * 100}%`, opacity: SHADES[i] }} />
+              ))}
             </div>
             <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
-              <Stat value={`${share(s.bySource.claude.activeMinutes)}%`} label={`Claude Code, ${formatHours(s.bySource.claude.activeMinutes)}`} />
-              <Stat value={formatCompact(s.bySource.claude.tokens)} label="Claude Code tokens" />
-              <Stat value={`${share(s.bySource.codex.activeMinutes)}%`} label={`Codex, ${formatHours(s.bySource.codex.activeMinutes)}`} />
-              <Stat value={formatCompact(s.bySource.codex.tokens)} label="Codex tokens" />
+              {split.map((h) => (
+                <Stat key={h.source} value={formatShare(h.share)} label={`${h.name}, ${formatHours(h.activeMinutes)}, ${formatCompact(h.tokens)} tokens`} />
+              ))}
             </div>
           </Section>
         )}
@@ -182,7 +183,7 @@ export default async function ProfilePage({ params }: Params) {
 
         <section className="mt-6 flex flex-col items-start gap-4 rounded-[12px] border border-border bg-surface p-8">
           <h2 className="text-[22px] font-semibold tracking-[-0.02em]">Make your own</h2>
-          <p className="text-[15px] text-muted">One command. It reads your Claude Code and Codex logs on your computer and makes this card.</p>
+          <p className="text-[15px] text-muted">One command. It reads your coding agent logs on your computer and makes this card.</p>
           <CopyCommand />
         </section>
       </main>

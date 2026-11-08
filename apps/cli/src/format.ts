@@ -1,7 +1,5 @@
-import { formatDuration, WEEKDAYS, type Summary } from "@codewrapped/stats";
+import { formatDuration, harnessSplit, WEEKDAYS, type Summary } from "@codewrapped/stats";
 import { bold, compact, dim, hours, int, pad, padStart, ribbon, shortName, usd } from "./ui";
-
-export const SOURCE_NAMES = { claude: "Claude Code", codex: "Codex" } as const;
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 const plural = (n: number, one: string, many = `${one}s`) => `${int(n)} ${n === 1 ? one : many}`;
@@ -70,11 +68,9 @@ export function formatSummary(s: Summary): string {
     lines.push("");
   }
 
-  if (s.source === "all" && s.bySource.claude.activeMinutes > 0 && s.bySource.codex.activeMinutes > 0) {
-    const total = s.bySource.claude.activeMinutes + s.bySource.codex.activeMinutes;
-    lines.push(
-      `  ${dim("Agents")}  ${SOURCE_NAMES.claude} ${pct(s.bySource.claude.activeMinutes / total)}, ${SOURCE_NAMES.codex} ${pct(s.bySource.codex.activeMinutes / total)} of active time`,
-    );
+  const split = s.source === "all" ? harnessSplit(s.bySource, "activeMinutes") : [];
+  if (split.length > 1) {
+    lines.push(`  ${dim("Agents")}  ${split.map((h) => `${h.name} ${pct(h.share)}`).join(", ")} of active time`);
   }
   const models = s.models.filter((m) => m.share >= 0.01).slice(0, 4);
   if (models.length > 0) {

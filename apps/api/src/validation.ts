@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MASK_BASE64_LENGTH, decodeMask } from "@codewrapped/stats";
+import { MASK_BASE64_LENGTH, SOURCES, decodeMask } from "@codewrapped/stats";
 
 const count = z.number().finite().nonnegative().max(1e13);
 const name = z.string().min(1).max(200);
@@ -22,7 +22,8 @@ const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((d) => !Number.isNaN(
 
 export const DailyAggregateSchema = z.object({
   day,
-  source: z.enum(["claude", "codex"]),
+  // Only harnesses with a shipped adapter. Deploy the API before a CLI that sends a new one.
+  source: z.enum(SOURCES),
   sessions: count,
   messages: count,
   activeMask: mask,

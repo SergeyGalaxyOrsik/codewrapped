@@ -1,4 +1,15 @@
-export type Source = "claude" | "codex";
+/**
+ * Harnesses with a shipped adapter. The id is stored with every synced row,
+ * so the API must accept a new id before any CLI sends it.
+ */
+export const SOURCES = ["claude", "codex"] as const;
+export type Source = (typeof SOURCES)[number];
+
+/** Display names. */
+export const SOURCE_NAMES: Record<Source, string> = { claude: "Claude Code", codex: "Codex" };
+
+/** "Claude Code and Codex": every supported harness, as plain text. */
+export const SUPPORTED_HARNESSES = SOURCES.map((s) => SOURCE_NAMES[s]).join(", ").replace(/, ([^,]*)$/, " and $1");
 
 export type TokenCounts = {
   /** Uncached input tokens. For Codex, cached tokens are subtracted from input_tokens. */

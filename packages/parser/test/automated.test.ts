@@ -8,7 +8,7 @@ const fixtures = join(import.meta.dirname, "../fixtures");
 describe("automated sessions", () => {
   it("puts claude -p sessions in the automated block and keeps their tokens and tools", async () => {
     const claudeFiles = await listJsonl(join(fixtures, "claude-sdk"));
-    const { aggregates } = await parseFiles({ claudeFiles, timeZone: "UTC" });
+    const { aggregates } = await parseFiles({ files: { claude: claudeFiles }, timeZone: "UTC" });
     expect(aggregates).toHaveLength(1);
     const row = aggregates[0]!;
     expect(row.sessions).toBe(0);
@@ -25,7 +25,7 @@ describe("automated sessions", () => {
 
   it("puts codex exec sessions in the automated block", async () => {
     const codexFiles = await listJsonl(join(fixtures, "codex-exec"));
-    const { aggregates } = await parseFiles({ codexFiles, timeZone: "UTC" });
+    const { aggregates } = await parseFiles({ files: { codex: codexFiles }, timeZone: "UTC" });
     const row = aggregates[0]!;
     expect(row.sessions).toBe(0);
     expect(row.automated).toMatchObject({ sessions: 1, messages: 1, agentMinutes: 4 });
@@ -35,7 +35,7 @@ describe("automated sessions", () => {
 
   it("leaves interactive sessions alone", async () => {
     const claudeFiles = await listJsonl(join(fixtures, "claude"));
-    const { aggregates } = await parseFiles({ claudeFiles, timeZone: "UTC" });
+    const { aggregates } = await parseFiles({ files: { claude: claudeFiles }, timeZone: "UTC" });
     expect(aggregates[0]!.automated.sessions).toBe(0);
     expect(aggregates[0]!.sessions).toBe(1);
   });

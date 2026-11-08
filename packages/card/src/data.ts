@@ -6,6 +6,7 @@ import {
   formatHours,
   formatInt,
   formatShare,
+  harnessSplit,
   formatUsd,
   plural,
   truncateMiddle,
@@ -38,7 +39,7 @@ export type CardData = {
   range: string;
   /** Headline tokens: input, output and cache writes. */
   hero: { value: string; unit: string };
-  /** "with Claude Code and Codex". Names only the agents that were used. */
+  /** "with Claude Code" for one harness, else the token split: "Claude Code 70%, Codex 30%" (top 3 + other). */
   heroLabel: string;
   /** "120 h of agent time, up to 4 sessions at once", or null without parallel work. */
   parallel: string | null;
@@ -94,13 +95,12 @@ export function heatSteps(heatmap: number[][]): number[][] {
   );
 }
 
-function agentsLabel(s: CardSummary): string {
-  const claude = s.bySource.claude.activeMinutes > 0;
-  const codex = s.bySource.codex.activeMinutes > 0;
-  if (claude && codex) return "with Claude Code and Codex";
-  if (claude) return "with Claude Code";
-  if (codex) return "with Codex";
-  return "with coding agents";
+/** Split by tokens, since the label sits under the token count. */
+export function agentsLabel(s: CardSummary): string {
+  const split = harnessSplit(s.bySource, "tokens");
+  if (split.length === 0) return "with coding agents";
+  if (split.length === 1) return `with ${split[0]!.name}`;
+  return split.map((h) => `${h.name} ${formatShare(h.share)}`).join(", ");
 }
 
 export function cardData(s: CardSummary, opts: CardOptions = {}): CardData {
