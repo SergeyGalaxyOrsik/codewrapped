@@ -1,5 +1,5 @@
-import { eq } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
+import { eq, sql } from "drizzle-orm";
+import { describe, expect, it, vi } from "vitest";
 import type { DailyAggregate } from "@codewrapped/stats";
 import { dailyStats, deviceCodes, verifications } from "../src/db/schema";
 import { purgeExpired } from "../src/lib/purge";
@@ -267,5 +267,85 @@ describe("expired login state", () => {
     expect(await purgeExpired(t.db, now)).toEqual({ deviceCodes: 1, verifications: 1 });
     expect((await t.db.select({ c: deviceCodes.userCode }).from(deviceCodes)).map((r) => r.c)).toEqual(["RECENT"]);
     expect(await t.db.select({ id: verifications.id }).from(verifications).where(eq(verifications.id, "v-live"))).toHaveLength(1);
+  });
+});
+
+describe("leaderboards after deletion", () => {
+  type Board = { entries: Array<{ handle: string }> };
+  it("drop people who deleted their data or their account", async () => {
+    const t = await setup();
+    for (const id of ["ada", "bob", "cyd"]) {
+      await t.createUser(id, id);
+      expect((await t.sync(await t.login(id), [day("2026-11-06", "claude")])).status).toBe(200);
+      await t.req("PATCH", "/me/leaderboard", { user: id, body: { enabled: true } });
+    }
+    const handles = async () => (await json<Board>(await t.req("GET", "/leaderboard?period=week"))).entries.map((e) => e.handle);
+    expect(await handles()).toEqual(["ada", "bob", "cyd"]);
+    await t.req("DELETE", "/me/data", { user: "bob" });
+    await t.req("DELETE", "/me", { user: "cyd" });
+    await vi.waitFor(async () => expect(await handles()).toEqual(["ada"]));
+  });
+});
+
+describe("server errors", () => {
+  it("log the route and the database's reason, never the query's values", async () => {
+    const t = await setup();
+    await t.createUser("u1", "ada");
+    const token = await t.login("u1");
+    await t.db.execute(sql`alter table daily_stats rename to daily_stats_gone`);
+    const logged: string[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => void logged.push(args.map(String).join(" ")));
+    try {
+      const res = await t.sync(token, [day("2026-11-07", "claude", { repos: { "private-repo-name": 1 } })]);
+      expect(res.status).toBe(500);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).not.toContain("private-repo-name");
+    expect(JSON.parse(logged[0]!)).toMatchObject({ method: "POST", route: "/sync", code: "42P01" });
+  });
+});
+
+describe("path parameters", () => {
+  it("that cannot name anything are not found", async () => {
+    const t = await setup();
+    await t.createUser("u1", "ada");
+    for (const path of ["/u/%00ada", "/u/ada%00", "/u/a%E2%80%AEb", "/u/" + "a".repeat(300)]) expect((await t.req("GET", path)).status).toBe(404);
+    expect((await t.req("DELETE", "/me/tokens/%00", { user: "u1" })).status).toBe(404);
+    expect((await t.req("DELETE", "/me/tokens/abc%00def", { user: "u1" })).status).toBe(404);
+  });
+});
+
+describe("names shown to other people", () => {
+  it("lose control characters and direction overrides", async () => {
+    const t = await setup();
+    await t.createUser("u1", "ada");
+    const start = await json<{ userCode: string }>(
+      await t.req("POST", "/cli/device", { body: { machineLabel: "\u202eMacBook\nApprove to continue\u0007" } }),
+    );
+    const shown = await json<{ machineLabel: string }>(await t.req("GET", `/cli/device/${start.userCode}`, { user: "u1" }));
+    expect(shown.machineLabel).toBe("MacBook Approve to continue");
+    expect((await t.req("POST", "/cli/device", { body: { machineLabel: "\u202e\u2066\n" } })).status).toBe(400);
+
+    await t.req("PATCH", "/me/profile", { user: "u1", body: { displayName: "Ada\u202e ecalovL\u0000" } });
+    expect((await json<{ profile: { displayName: string | null } }>(await t.req("GET", "/me", { user: "u1" }))).profile.displayName).toBe("Ada ecalovL");
+    await t.req("PATCH", "/me/profile", { user: "u1", body: { displayName: "\u200f\t" } });
+    expect((await json<{ profile: { displayName: string | null } }>(await t.req("GET", "/me", { user: "u1" }))).profile.displayName).toBeNull();
+  });
+});
+
+describe("reserved handles", () => {
+  it("are never given out, at sign up or on a change", async () => {
+    const t = await setup();
+    await t.createUser("u1", "settings");
+    await t.createUser("u2", "ada");
+    expect((await json<{ profile: { handle: string } }>(await t.req("GET", "/me", { user: "u1" }))).profile.handle).toBe("settings-2");
+    for (const handle of ["admin", "codewrapped", "leaderboard", "api", "www", "support"]) {
+      const res = await t.req("PATCH", "/me/profile", { user: "u2", body: { handle } });
+      expect(res.status).toBe(409);
+      expect(await code(res)).toBe("handle_reserved");
+    }
+    expect((await t.req("PATCH", "/me/profile", { user: "u2", body: { handle: "ada-lovelace" } })).status).toBe(200);
   });
 });

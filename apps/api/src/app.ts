@@ -29,7 +29,7 @@ import {
   type ScoredDay,
 } from "./lib/leaderboard";
 import { flagDay } from "./lib/plausibility";
-import { checkDays, HANDLE_RE, SyncBody } from "./validation";
+import { checkDays, cleanName, HANDLE_RE, MachineId, RESERVED_HANDLES, SyncBody } from "./validation";
 
 export type AppDeps = {
   db: Db;
@@ -56,6 +56,7 @@ const MAX_MACHINES = 10;
 const MAX_SOURCES = 20;
 const USER_CODE_RE = /^[A-Z]{4}-\d{4}$/i;
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+const TOKEN_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 type Vars = { userId: string; tokenId: string };
 
@@ -106,8 +107,19 @@ export function createApp(deps: AppDeps) {
   });
   app.use("*", (c, next) => (c.req.path === "/sync" ? next() : smallBody(c, next)));
 
+  // Query errors carry their parameters, such as private repository and file names, so only these fields are logged.
   app.onError((err, c) => {
-    console.error(err);
+    const cause = err.cause instanceof Error ? err.cause : err;
+    console.error(
+      JSON.stringify({
+        event: "request_failed",
+        method: c.req.method,
+        route: c.req.routePath,
+        name: cause.name,
+        code: (cause as { code?: unknown }).code ?? null,
+        message: cause.message.split("\n")[0]?.slice(0, 200),
+      }),
+    );
     return fail(c, 500, "internal", "Something went wrong on our side. Try again in a minute.");
   });
 
@@ -164,7 +176,7 @@ export function createApp(deps: AppDeps) {
     const wait = deviceStartLimiter.take(ipOf(c), now().getTime());
     if (wait > 0) return tooMany(c, wait, "Too many logins from this network.");
     const body = z
-      .object({ machineLabel: z.string().min(1).max(100), machineId: z.string().max(64).optional() })
+      .object({ machineLabel: z.string().transform(cleanName).pipe(z.string().min(1).max(100)), machineId: MachineId.optional() })
       .safeParse(await c.req.json().catch(() => null));
     if (!body.success) return fail(c, 400, "invalid_request", "Send machineLabel, the name of this computer.");
     const deviceCode = randomToken("dc_");
@@ -504,7 +516,7 @@ export function createApp(deps: AppDeps) {
     const period = (c.req.query("period") ?? "30d") as Period;
     if (!PERIODS.includes(period)) return fail(c, 400, "invalid_period", `Use one of ${PERIODS.join(", ")}.`);
     const handle = c.req.param("handle").replace(/^@/, "").toLowerCase();
-    const [p] = await db.select().from(profiles).where(sql`lower(${profiles.handle}) = ${handle}`).limit(1);
+    const [p] = HANDLE_RE.test(handle) ? await db.select().from(profiles).where(sql`lower(${profiles.handle}) = ${handle}`).limit(1) : [];
     if (!p) return fail(c, 404, "not_found", "No profile with this handle.");
     const key = `${p.userId}:${period}`;
     let body = cache.get(key);
@@ -561,7 +573,16 @@ export function createApp(deps: AppDeps) {
 
   me.patch("/profile", async (c) => {
     const body = z
-      .object({ handle: z.string().optional(), displayName: z.string().max(80).nullable().optional() })
+      .object({
+        handle: z.string().max(100).optional(),
+        displayName: z
+          .string()
+          .transform(cleanName)
+          .pipe(z.string().max(80))
+          .transform((s) => s || null)
+          .nullable()
+          .optional(),
+      })
       .safeParse(await c.req.json().catch(() => null));
     if (!body.success) return fail(c, 400, "invalid_request", "Send handle or displayName.");
     const userId = c.get("userId");
@@ -573,12 +594,14 @@ export function createApp(deps: AppDeps) {
     if (handle && handle !== p.handle.toLowerCase()) {
       if (p.handleChangedAt) return fail(c, 409, "handle_locked", "You can change your handle once, and you already did.");
       if (!HANDLE_RE.test(handle)) return fail(c, 400, "invalid_handle", "Use 1 to 39 lowercase letters, digits or dashes, not starting or ending with a dash.");
+      if (RESERVED_HANDLES.has(handle)) return fail(c, 409, "handle_reserved", "This handle is reserved. Pick another.");
       if (await handleTaken(db, handle)) return fail(c, 409, "handle_taken", "This handle is taken. Pick another.");
       set.handle = handle;
       set.handleChangedAt = now();
     }
     await db.update(profiles).set(set).where(eq(profiles.userId, userId));
     await bust(userId);
+    boards.markStale();
     return c.json({ ok: true, handle: set.handle ?? p.handle });
   });
 
@@ -648,6 +671,7 @@ export function createApp(deps: AppDeps) {
   });
 
   me.delete("/tokens/:id", async (c) => {
+    if (!TOKEN_ID_RE.test(c.req.param("id"))) return fail(c, 404, "not_found", "No connected computer with this id.");
     const revoked = await db
       .update(cliTokens)
       .set({ revokedAt: now() })
@@ -661,6 +685,7 @@ export function createApp(deps: AppDeps) {
     const userId = c.get("userId");
     const deleted = await db.delete(dailyStats).where(eq(dailyStats.userId, userId)).returning({ day: dailyStats.day });
     await bust(userId);
+    boards.markStale();
     return c.json({ deletedDays: deleted.length });
   });
 
@@ -669,6 +694,7 @@ export function createApp(deps: AppDeps) {
     // Profiles, tokens, stats, sessions and accounts go with the user (ON DELETE CASCADE).
     await db.delete(users).where(eq(users.id, userId));
     await bust(userId);
+    boards.markStale();
     return c.body(null, 204);
   });
 

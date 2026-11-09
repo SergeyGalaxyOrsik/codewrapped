@@ -73,8 +73,10 @@ export const DailyAggregateSchema = z.object({
   schemaVersion: z.literal(1),
 });
 
+export const MachineId = z.string().min(8).max(64).regex(/^[A-Za-z0-9_-]+$/);
+
 export const SyncBody = z.object({
-  machineId: z.string().min(8).max(64).regex(/^[A-Za-z0-9_-]+$/),
+  machineId: MachineId,
   timeZone: z.string().min(1).max(64).refine((tz) => {
     try {
       new Intl.DateTimeFormat("en-US", { timeZone: tz });
@@ -134,3 +136,20 @@ export function checkDays(days: unknown[], limits: SyncLimits): { valid: SyncedD
 }
 
 export const HANDLE_RE = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/;
+
+/** Handles nobody gets: the website's own paths and names people would take for staff. */
+export const RESERVED_HANDLES: ReadonlySet<string> = new Set([
+  "about", "account", "admin", "administrator", "api", "app", "auth", "blog", "codewrapped", "dashboard",
+  "device", "docs", "help", "leaderboard", "login", "logout", "me", "mod", "moderator", "official", "privacy",
+  "root", "security", "settings", "signin", "signup", "staff", "status", "support", "system", "team", "terms",
+  "u", "user", "www",
+]);
+
+const CONTROL = /\p{Cc}+/gu;
+/** Marks that reorder text, so a name could show differently from what it spells. */
+const BIDI = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g;
+
+/** A name as shown to other people: no control characters, no direction overrides, single spaces. */
+export function cleanName(s: string): string {
+  return s.replace(BIDI, "").replace(CONTROL, " ").replace(/\s+/g, " ").trim();
+}

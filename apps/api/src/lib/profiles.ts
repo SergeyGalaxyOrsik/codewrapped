@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import type { Db } from "../db";
 import { profiles } from "../db/schema";
-import { HANDLE_RE } from "../validation";
+import { cleanName, HANDLE_RE, RESERVED_HANDLES } from "../validation";
 
 /** A valid handle from a GitHub login or a name: lowercase letters, digits and dashes. */
 export function slugHandle(input: string): string {
@@ -31,9 +31,9 @@ export async function ensureProfile(
 ): Promise<void> {
   const base = slugHandle(user.githubLogin ?? user.name);
   let handle = base;
-  for (let i = 2; await handleTaken(db, handle); i++) handle = `${base.slice(0, 36)}-${i}`;
+  for (let i = 2; RESERVED_HANDLES.has(handle) || (await handleTaken(db, handle)); i++) handle = `${base.slice(0, 36)}-${i}`;
   await db
     .insert(profiles)
-    .values({ userId: user.id, handle, displayName: user.name, avatarUrl: user.image })
+    .values({ userId: user.id, handle, displayName: cleanName(user.name) || null, avatarUrl: user.image })
     .onConflictDoNothing();
 }
