@@ -16,3 +16,4 @@ coverage
 auth.json
 **/drafts/
 *.summary.json
+.claude/

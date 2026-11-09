@@ -58,9 +58,10 @@ const privacy: Array<[string, ReactNode]> = [
   [
     "Where it looks",
     <>
-      {c("~/.claude")}, {c("~/.codex")}, {c("CLAUDE_CONFIG_DIR")} and {c("CODEX_HOME")}, plus folders one level deep in {c("~")} and{" "}
-      {c("~/.config")} named {c(".claude*")}, {c(".codex*")}, {c("claude*")} or {c("codex*")} that hold logs. From your shell config files it reads
-      only those two variables.{" "}
+      The log folders of all seven agents, such as {c("~/.claude")}, {c("~/.codex")} and Cursor's chat database, plus folders one level deep in{" "}
+      {c("~")} and {c("~/.config")} named {c(".claude*")}, {c(".codex*")}, {c("claude*")} or {c("codex*")} that hold logs. From your shell config
+      files it keeps only the paths in {c("CLAUDE_CONFIG_DIR")}, {c("CODEX_HOME")}, {c("PI_CODING_AGENT_DIR")}, {c("ZCODE_SESSION_DB_PATH")} and{" "}
+      {c("ZCODE_SESSION_DB")}.{" "}
       <a href={`${site.repo}/blob/main/SECURITY.md`} className="rounded-[8px] text-fg underline decoration-border underline-offset-4 hover:decoration-fg">
         Exactly what it scans
       </a>
@@ -69,12 +70,13 @@ const privacy: Array<[string, ReactNode]> = [
   [
     "What it reads",
     <>
-      Session logs in those folders, and from {c(".git/config")} the repository name from the remote URL, never credentials.
+      Session logs and chat databases in those folders, and from {c(".git/config")} only the repository name from the remote URL, never
+      credentials.
     </>,
   ],
-  ["What it counts", "Time, tokens, tool calls, file and repository names."],
-  ["What it never keeps", "Your prompts, your code, full paths."],
-  ["Without an account", "It makes zero network requests."],
+  ["What it counts", "Time, tokens, tool calls, model names, file and repository names."],
+  ["What it never uploads", "Your prompts, your code, full paths."],
+  ["Without an account", "The CLI itself makes no network requests. npx downloads it from npm."],
 ];
 
 const steps: Array<{ label: string; code?: boolean }> = [
@@ -87,16 +89,17 @@ const faq: Array<[string, ReactNode]> = [
   [
     "Is my code uploaded?",
     <>
-      No. Without an account, nothing leaves your computer. If you sign in and sync, only daily counts go up, plus tool and model names, file names
-      without paths and repository names without owners. Run <code className="font-mono text-fg">npx codewrapped sync --dry-run</code> to see the
-      exact upload.
+      No. Without an account, the CLI sends nothing. If you sign in and sync, it uploads daily counts, tool and model names, cost estimates per
+      model, file names without paths, repository names without owners, a random machine id, your time zone and which minutes of each day you
+      were active with an agent. Run <code className="font-mono text-fg">npx codewrapped sync --dry-run</code> to see the exact upload.
     </>,
   ],
   [
     "Who can see my repository and file names?",
     <>
-      Only you, by default. Your public page hides repository and file names until you turn them on in settings. The card the CLI makes on your
-      computer shows them, since it stays with you unless you share it.
+      Only you, by default. Your public page hides repository and file names until you turn them on in settings. To keep them off the server too,
+      sync with {c("--hide-files")} or {c("--hide-repos")}. The card the CLI makes on your computer shows them, since it stays with you unless you
+      share it.
     </>,
   ],
   [
@@ -171,7 +174,7 @@ export default async function Home() {
               Your month with coding agents, on one card.
             </h1>
             <p className="cw-enter max-w-[42ch] text-[17px] leading-relaxed text-muted" style={{ "--i": 1 } as React.CSSProperties}>
-              Hours, tokens and repositories from your coding agents. Read locally, uploaded only if you sign in.
+              Hours, tokens and repositories from your coding agents. Read locally, uploaded only if you sign in and sync.
             </p>
             <p className="cw-enter text-[14px] text-muted" style={{ "--i": 1 } as React.CSSProperties}>
               Works with {SUPPORTED_HARNESSES}.

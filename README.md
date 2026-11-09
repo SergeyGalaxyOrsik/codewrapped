@@ -26,10 +26,10 @@ Run the command and you get `codewrapped.png` and a summary in the terminal:
 
 ## Private by default
 
-- **What it reads:** session logs in `~/.claude`, `~/.codex`, `~/.pi/agent`, `~/.local/share/opencode`, `~/.zcode/cli/db`, Cursor's chat database, `~/.omp/agent` and any other Claude Code or Codex folders it finds (see [SECURITY.md](SECURITY.md) for exactly where it looks), and from `.git/config` only the repository name from the remote URL, never credentials.
-- **What it counts:** time, tokens, tool calls, file and repository names.
-- **What it never keeps:** your prompts, your code, full paths.
-- **Without an account:** it makes zero network requests.
+- **What it reads:** session logs in `~/.claude`, `~/.codex`, `~/.pi/agent`, `~/.local/share/opencode`, `~/.zcode/cli/db`, Cursor's chat database, `~/.omp/agent` and any other Claude Code or Codex folders it finds in `~` and `~/.config`. From `~/.zshrc`, `~/.bashrc`, `~/.zprofile` and fish's `config.fish` it keeps only the paths in `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_CODING_AGENT_DIR`, `ZCODE_SESSION_DB_PATH` and `ZCODE_SESSION_DB`. From `.git/config` it keeps only the repository name from the remote URL, never credentials. [SECURITY.md](SECURITY.md) lists exactly where it looks.
+- **What it counts:** time, tokens, tool calls, model names, file and repository names.
+- **What it never uploads:** your prompts, your code, full paths. The list of log folders it found stays in `~/.config/codewrapped/config.json` on your computer.
+- **Without an account:** the CLI itself makes no network requests. `npx` downloads the package from npm.
 
 Several Claude Code accounts, such as `~/.claude` and `~/.claude-work`, are found and added up automatically. Folders elsewhere: pass `--claude-dir`, `--codex-dir`, `--pi-dir`, `--opencode-dir`, `--zcode-dir`, `--cursor-dir` or `--omp-dir`. Several computers: run `npx codewrapped sync` on each and the totals add up on your profile.
 
@@ -43,7 +43,11 @@ npx codewrapped sync    # upload daily totals
 npx codewrapped logout
 ```
 
-The first sync shows what will be uploaded and asks before sending. `npx codewrapped sync --dry-run` prints the exact upload and sends nothing. File and repository names stay off your public page until you turn them on.
+`login` sends your computer's hostname as the name of the connection, which only you see in settings. `sync` uploads, per day and per agent: counts, tokens, model names with the estimated cost per model, tool names and tool categories, file names without paths, repository names without owners, separate counts for automated runs, and which minutes of the day you were active with an agent. Each upload also carries a random machine id and your time zone.
+
+For a working folder that no longer exists, its folder name is uploaded as a repository name, even if it was never a repository. `--hide-files` and `--hide-repos` leave those names out of the upload.
+
+The first sync shows what will be uploaded and asks before sending. `npx codewrapped sync --dry-run` prints the exact upload and sends nothing. By default, your public page shows totals, cost, models, tools and when you work. File and repository names stay off it until you turn them on.
 
 ## Options
 
@@ -61,7 +65,7 @@ The first sync shows what will be uploaded and asks before sending. `npx codewra
                                 Read logs from these folders instead
 ```
 
-Logs are found in `$CLAUDE_CONFIG_DIR`, `~/.claude`, `~/.config/claude`, `$CODEX_HOME` and `~/.codex`. A log in more than one folder is counted once.
+Without a folder flag such as `--claude-dir`, the CLI looks in each agent's default folders and environment variables, in folders saved from earlier runs, in shell config files and, for Claude Code and Codex, in a scan of `~` and `~/.config`. A log in more than one folder is counted once. Three more variables change behavior: `CODEWRAPPED_API_URL` sets the server for `login` and `sync`, `XDG_CONFIG_HOME` moves `~/.config/codewrapped`, and `CODEWRAPPED_SQLITE=sql.js` reads databases with sql.js instead of `node:sqlite`. [SECURITY.md](SECURITY.md) has the details.
 
 ## How the numbers are counted
 
