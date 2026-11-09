@@ -73,4 +73,41 @@ describe("createGitRepoResolver", () => {
     // Gone folders fall back to the path.
     expect(resolve("/Users/nobody/dev/old-app")).toBe("old-app");
   });
+
+  it("reads the remote url the way git does", async () => {
+    const base = await setup();
+    const configs: Record<string, string> = {
+      quoted: '[remote "origin"]\n\turl = "https://user:token@github.com/o/quoted-name.git"\n',
+      hashComment: '[remote "origin"]\n\turl = git@github.com:o/hash-name.git # mirror\n',
+      semicolonComment: '[remote "origin"]\n\turl = git@github.com:o/semi-name.git ; mirror\n',
+      quotedSemicolon: '[remote "origin"]\n\turl = "https://github.com/o/semi;colon-name.git"\n',
+      upperCase: '[Remote "origin"]\n\tURL = https://github.com/o/upper-name.git\n',
+      oldForm: "[remote.origin]\n\turl = https://github.com/o/old-form.git\n",
+      ipv6First: '[remote "origin"]\n\turl = https://[::1]/o/v6-name.git\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n',
+      originAfterOther: '[remote "upstream"]\n\turl = https://github.com/o/upstream-name.git\n[remote "origin"]\n\turl = https://github.com/o/origin-name.git\n',
+      onlyOther: '[remote "upstream"]\n\turl = https://github.com/o/only-upstream.git\n',
+      pushurlFirst: '[remote "origin"]\n\tpushurl = https://github.com/o/push-name.git\n\turl = https://github.com/o/fetch-name.git\n',
+      otherSection: '[url "https://github.com/"]\n\tinsteadOf = gh:\n[branch "main"]\n\tremote = origin\n\turl = https://github.com/o/not-a-remote.git\n',
+    };
+    const resolve = createGitRepoResolver();
+    const names: Record<string, string | null> = {};
+    for (const [name, config] of Object.entries(configs)) {
+      await mkdir(join(base, name, ".git"), { recursive: true });
+      await writeFile(join(base, name, ".git", "config"), config);
+      names[name] = resolve(join(base, name));
+    }
+    expect(names).toEqual({
+      quoted: "quoted-name",
+      hashComment: "hash-name",
+      semicolonComment: "semi-name",
+      quotedSemicolon: "semi;colon-name",
+      upperCase: "upper-name",
+      oldForm: "old-form",
+      ipv6First: "v6-name",
+      originAfterOther: "origin-name",
+      onlyOther: "only-upstream",
+      pushurlFirst: "fetch-name",
+      otherSection: "otherSection",
+    });
+  });
 });
