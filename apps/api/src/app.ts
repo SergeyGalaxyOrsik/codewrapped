@@ -48,6 +48,7 @@ export type AppDeps = {
 const DEVICE_TTL_MS = 10 * 60_000;
 const DEVICE_INTERVAL_S = 5;
 const MAX_SYNC_BYTES = 1024 * 1024;
+const MAX_BODY_BYTES = 16 * 1024;
 /** Logging in again past this many connected computers disconnects the oldest. */
 const MAX_LIVE_TOKENS = 10;
 const MAX_MACHINES = 10;
@@ -76,6 +77,12 @@ export function createApp(deps: AppDeps) {
       allowHeaders: ["Content-Type", "Authorization"],
     }),
   );
+
+  const smallBody = bodyLimit({
+    maxSize: MAX_BODY_BYTES,
+    onError: (c) => fail(c, 413, "payload_too_large", "Send at most 16 KB per request."),
+  });
+  app.use("*", (c, next) => (c.req.path === "/sync" ? next() : smallBody(c, next)));
 
   app.onError((err, c) => {
     console.error(err);

@@ -95,6 +95,33 @@ describe("synced days", () => {
   });
 });
 
+describe("request bodies", () => {
+  const stream = (bytes: number) =>
+    new ReadableStream({
+      start(c) {
+        c.enqueue(new TextEncoder().encode(JSON.stringify({ machineLabel: "x".repeat(bytes) })));
+        c.close();
+      },
+    });
+
+  it("are capped at 16 KB everywhere but /sync, with or without a length", async () => {
+    const t = await setup();
+    await t.createUser("u1", "ada");
+    const big = { machineLabel: "x".repeat(20 * 1024) };
+    expect((await t.req("POST", "/cli/device", { body: big })).status).toBe(413);
+    expect((await t.req("PATCH", "/me/profile", { user: "u1", body: { displayName: "x".repeat(20 * 1024) } })).status).toBe(413);
+    const chunked = await t.app.request("/cli/token", { method: "POST", body: stream(20 * 1024), headers: { "content-type": "application/json" }, duplex: "half" } as RequestInit);
+    expect(chunked.status).toBe(413);
+    expect((await t.req("POST", "/cli/device", { body: { machineLabel: "laptop" } })).status).toBe(200);
+
+    const token = await t.login("u1");
+    const rows = Array.from({ length: 60 }, (_, i) => day(`2026-10-${String((i % 30) + 1).padStart(2, "0")}`, i < 30 ? "claude" : "codex", { files: Object.fromEntries(Array.from({ length: 100 }, (_, j) => [`file-${j}.ts`, j])) }));
+    const sync = await t.sync(token, rows);
+    expect(JSON.stringify(rows).length).toBeGreaterThan(100 * 1024);
+    expect(sync.status).toBe(200);
+  });
+});
+
 describe("client address", () => {
   const req = (xff?: string) => new Request("http://api.test/", { headers: xff ? { "x-forwarded-for": xff } : {} });
   it("is the address the proxy appended, or the socket's", () => {
