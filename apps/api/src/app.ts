@@ -3,7 +3,7 @@ import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { z } from "zod";
-import { buildPublicProfile, isKnownSource, knownRows, PERIODS, todayIn, type DailyAggregate, type Period, type PublicProfile } from "@codewrapped/stats";
+import { addDays, buildPublicProfile, isKnownSource, knownRows, PERIODS, todayIn, type DailyAggregate, type Period, type PublicProfile } from "@codewrapped/stats";
 import { webOrigins } from "./config";
 import type { Db } from "./db";
 import { cliTokens, dailyStats, DEFAULT_VISIBILITY, deviceCodes, profiles, users, type Visibility } from "./db/schema";
@@ -58,6 +58,7 @@ type Vars = { userId: string; tokenId: string };
 export function createApp(deps: AppDeps) {
   const { db } = deps;
   const now = deps.now ?? (() => new Date());
+  const today = () => now().toISOString().slice(0, 10);
   const cache = new TtlCache<PublicProfile>(5 * 60_000);
   /** Users GitHub was asked about lately, so a failing lookup is not repeated on every request. */
   const askedGithub = new TtlCache<true>(60 * 60_000);
@@ -271,7 +272,11 @@ export function createApp(deps: AppDeps) {
         return fail(c, 403, "too_many_machines", `This account already has data from ${MAX_MACHINES} computers. Delete your synced data in the settings on the website to start over.`);
       }
       // One bad or unknown row never costs the rest of the upload.
-      const { valid: days, skipped } = checkDays(parsed.data.days, { sources: new Set(stored?.sources ?? []), maxSources: MAX_SOURCES });
+      const { valid: days, skipped } = checkDays(parsed.data.days, {
+        latestDay: addDays(today(), 1),
+        sources: new Set(stored?.sources ?? []),
+        maxSources: MAX_SOURCES,
+      });
       if (days.length > 0) {
         // One row per user, machine, source and day. Re-sending a day replaces it.
         await db
@@ -311,8 +316,6 @@ export function createApp(deps: AppDeps) {
   );
 
   // ---- leaderboards ----
-
-  const today = () => now().toISOString().slice(0, 10);
 
   /** Everyone with synced days in the range, scored. Opt-in and eligibility are decided per board. */
   const buildBoard = async (_period: BoardPeriod, { start, end }: BoardRange): Promise<Candidate[]> => {

@@ -57,6 +57,44 @@ describe("account limits", () => {
   });
 });
 
+describe("synced days", () => {
+  type SyncResult = { received: number; skipped: Array<{ index: number; day: string; reason: string }> };
+
+  it("are real calendar days from 2024 up to tomorrow in UTC", async () => {
+    const t = await setup();
+    await t.createUser("u1", "ada");
+    const token = await t.login("u1");
+    const days = ["2025-02-29", "2000-02-30", "0000-01-01", "2023-12-31", "2026-11-10", "9999-12-31", "2024-01-01", "2024-02-29", "2026-11-09"];
+    const res = await t.sync(token, days.map((d) => day(d, "claude")), "machine-aaaa", "Pacific/Kiritimati");
+    expect(res.status).toBe(200);
+    const body = await json<SyncResult>(res);
+    expect(body.received).toBe(3);
+    expect(body.skipped.map((s) => [s.day, s.reason.split(":")[0]])).toEqual([
+      ["2025-02-29", "day"],
+      ["2000-02-30", "day"],
+      ["0000-01-01", "day"],
+      ["2023-12-31", "day"],
+      ["2026-11-10", "day"],
+      ["9999-12-31", "day"],
+    ]);
+    const p = await json<{ summary: { totals: { tokens: { headline: number } } } }>(await t.req("GET", "/u/ada?period=all"));
+    expect(p.summary.totals.tokens.headline).toBe(3000);
+  });
+
+  it("sent twice in one upload keep the last copy", async () => {
+    const t = await setup();
+    await t.createUser("u1", "ada");
+    const token = await t.login("u1");
+    const res = await t.sync(token, [day("2026-11-07", "claude", { tokens: 1 }), day("2026-11-07", "codex"), day("2026-11-07", "claude", { tokens: 7 })]);
+    expect(res.status).toBe(200);
+    const body = await json<SyncResult>(res);
+    expect(body.received).toBe(2);
+    expect(body.skipped).toEqual([expect.objectContaining({ index: 0, day: "2026-11-07" })]);
+    const p = await json<{ summary: { totals: { tokens: { headline: number } } } }>(await t.req("GET", "/u/ada?period=7d"));
+    expect(p.summary.totals.tokens.headline).toBe(1007);
+  });
+});
+
 describe("client address", () => {
   const req = (xff?: string) => new Request("http://api.test/", { headers: xff ? { "x-forwarded-for": xff } : {} });
   it("is the address the proxy appended, or the socket's", () => {

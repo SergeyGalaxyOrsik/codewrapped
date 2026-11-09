@@ -18,7 +18,17 @@ const mask = z
     }
   }, "not a 1440 bit mask");
 
-const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((d) => !Number.isNaN(Date.parse(`${d}T00:00:00Z`)), "not a date");
+/** The earliest day a sync may hold. */
+export const FIRST_DAY = "2024-01-01";
+
+const day = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine((d) => {
+    const t = new Date(`${d}T00:00:00Z`);
+    return !Number.isNaN(t.getTime()) && t.toISOString().slice(0, 10) === d;
+  }, "not a date")
+  .refine((d) => d >= FIRST_DAY, `before ${FIRST_DAY}`);
 
 export const DailyAggregateSchema = z.object({
   day,
@@ -77,24 +87,32 @@ export type SyncedDay = Omit<DailyAggregate, "source"> & { source: string };
 
 export type SkippedDay = { index: number; day: string | null; source: string | null; reason: string };
 
-/** What an account already holds, which bounds what one upload may add. */
-export type SyncLimits = { sources: ReadonlySet<string>; maxSources: number };
+/**
+ * What one upload may add. `latestDay` is tomorrow in UTC, the furthest any timezone's today
+ * reaches. `sources` are the harnesses the account already holds.
+ */
+export type SyncLimits = { latestDay: string; sources: ReadonlySet<string>; maxSources: number };
 
-/** Splits uploaded rows into valid ones and skipped ones with the first problem of each. */
+/**
+ * Splits uploaded rows into valid ones and skipped ones with the first problem of each.
+ * A day and source sent twice keeps the last copy, as a later sync of it would.
+ */
 export function checkDays(days: unknown[], limits: SyncLimits): { valid: SyncedDay[]; skipped: SkippedDay[] } {
-  const valid: SyncedDay[] = [];
+  const byKey = new Map<string, { index: number; row: SyncedDay }>();
   const skipped: SkippedDay[] = [];
   const sources = new Set(limits.sources);
   days.forEach((raw, index) => {
     const parsed = DailyAggregateSchema.safeParse(raw);
     if (parsed.success) {
       const row = parsed.data as SyncedDay;
-      if (!sources.has(row.source) && sources.size >= limits.maxSources) {
-        skipped.push({ index, day: row.day, source: row.source, reason: `source: at most ${limits.maxSources} harnesses per account` });
-        return;
-      }
+      const skip = (reason: string) => void skipped.push({ index, day: row.day, source: row.source, reason });
+      if (row.day > limits.latestDay) return skip("day: in the future");
+      if (!sources.has(row.source) && sources.size >= limits.maxSources) return skip(`source: at most ${limits.maxSources} harnesses per account`);
       sources.add(row.source);
-      valid.push(row);
+      const key = `${row.day}/${row.source}`;
+      const earlier = byKey.get(key);
+      if (earlier) skipped.push({ index: earlier.index, day: row.day, source: row.source, reason: `row: day and source sent again at ${index}` });
+      byKey.set(key, { index, row });
       return;
     }
     const r = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
@@ -106,7 +124,8 @@ export function checkDays(days: unknown[], limits: SyncLimits): { valid: SyncedD
       reason: `${issue?.path.join(".") || "row"}: ${issue?.message ?? "invalid"}`,
     });
   });
-  return { valid, skipped };
+  const valid = [...byKey.values()].sort((a, b) => a.index - b.index).map((v) => v.row);
+  return { valid, skipped: skipped.sort((a, b) => a.index - b.index) };
 }
 
 export const HANDLE_RE = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/;
