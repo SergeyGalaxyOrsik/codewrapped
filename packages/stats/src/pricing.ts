@@ -146,7 +146,8 @@ export function normalizeModelId(model: string): string {
 }
 
 export function priceFor(model: string): ModelPrice | undefined {
-  return PRICES[normalizeModelId(model)];
+  const id = normalizeModelId(model);
+  return Object.hasOwn(PRICES, id) ? PRICES[id] : undefined;
 }
 
 /** Token usage of one API request, split by how it is billed. */
