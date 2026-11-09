@@ -53,6 +53,7 @@ const MAX_BODY_BYTES = 16 * 1024;
 const MAX_LIVE_TOKENS = 10;
 const MAX_MACHINES = 10;
 const MAX_SOURCES = 20;
+const USER_CODE_RE = /^[A-Z]{4}-\d{4}$/i;
 
 type Vars = { userId: string; tokenId: string };
 
@@ -65,6 +66,8 @@ export function createApp(deps: AppDeps) {
   const askedGithub = new TtlCache<true>(60 * 60_000);
   const syncLimiter = new RateLimiter(deps.syncLimit?.requests ?? 30, deps.syncLimit?.windowMs ?? 10 * 60_000);
   const deviceStartLimiter = new RateLimiter(10, 10 * 60_000);
+  const codeTriesByUser = new RateLimiter(20, 10 * 60_000);
+  const codeTriesByIp = new RateLimiter(50, 10 * 60_000);
   const app = new Hono<{ Variables: Vars }>();
   const allowedOrigins = webOrigins(deps.webUrl);
 
@@ -216,6 +219,7 @@ export function createApp(deps: AppDeps) {
   });
 
   const pendingDevice = async (code: string) => {
+    if (!USER_CODE_RE.test(code)) return null;
     const [dc] = await db
       .select()
       .from(deviceCodes)
@@ -224,20 +228,32 @@ export function createApp(deps: AppDeps) {
     return dc ?? null;
   };
 
-  app.get("/cli/device/:code", requireSession, async (c) => {
+  const notPending = (c: Context) => fail(c, 404, "not_found", 'This code is not valid or expired. Run "npx codewrapped login" again.');
+
+  /** Codes are short enough to guess, so each account and each address gets few tries. */
+  const limitCodeTries = async (c: Context<{ Variables: Vars }>, next: () => Promise<void>) => {
+    const at = now().getTime();
+    const wait = Math.max(codeTriesByUser.take(c.get("userId"), at), codeTriesByIp.take(ipOf(c), at));
+    if (wait > 0) return tooMany(c, wait, "Too many codes tried.");
+    await next();
+  };
+
+  app.get("/cli/device/:code", requireSession, limitCodeTries, async (c) => {
     const dc = await pendingDevice(c.req.param("code") ?? "");
-    if (!dc) return fail(c, 404, "not_found", "This code is not valid or expired. Run \"npx codewrapped login\" again.");
+    if (!dc) return notPending(c);
     return c.json({ userCode: dc.userCode, machineLabel: dc.machineLabel, createdAt: dc.createdAt.toISOString() });
   });
 
   for (const action of ["approve", "deny"] as const) {
-    app.post(`/cli/device/:code/${action}`, requireSession, async (c) => {
+    app.post(`/cli/device/:code/${action}`, requireSession, limitCodeTries, async (c) => {
       const dc = await pendingDevice(c.req.param("code") ?? "");
-      if (!dc) return fail(c, 404, "not_found", "This code is not valid or expired. Run \"npx codewrapped login\" again.");
-      await db
+      if (!dc) return notPending(c);
+      const decided = await db
         .update(deviceCodes)
         .set(action === "approve" ? { status: "approved", userId: c.get("userId") } : { status: "denied" })
-        .where(eq(deviceCodes.deviceCodeHash, dc.deviceCodeHash));
+        .where(and(eq(deviceCodes.deviceCodeHash, dc.deviceCodeHash), eq(deviceCodes.status, "pending"), gt(deviceCodes.expiresAt, now())))
+        .returning({ status: deviceCodes.status });
+      if (decided.length === 0) return notPending(c);
       return c.json({ ok: true });
     });
   }

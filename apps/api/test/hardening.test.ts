@@ -157,6 +157,57 @@ describe("request bodies", () => {
   });
 });
 
+describe("login codes", () => {
+  const start = async (t: Awaited<ReturnType<typeof setup>>) =>
+    json<{ deviceCode: string; userCode: string }>(await t.req("POST", "/cli/device", { body: { machineLabel: "x" }, headers: { "x-forwarded-for": "192.0.2.1" } }));
+
+  it("give each account 20 tries in 10 minutes", async () => {
+    const t = await setup();
+    await t.createUser("u1", "ada");
+    await t.createUser("u2", "bob");
+    const real = await start(t);
+    const as = (user: string, ip: string) => ({ user, headers: { "x-forwarded-for": ip } });
+    for (let i = 0; i < 20; i++) expect((await t.req("GET", `/cli/device/BCDF-${2000 + i}`, as("u1", `198.51.100.${i}`))).status).toBe(404);
+    const locked = await t.req("POST", `/cli/device/${real.userCode}/approve`, as("u1", "198.51.100.99"));
+    expect(locked.status).toBe(429);
+    expect(Number(locked.headers.get("retry-after"))).toBeGreaterThan(0);
+    expect((await t.req("POST", `/cli/device/${real.userCode}/approve`, as("u2", "198.51.100.1"))).status).toBe(200);
+  });
+
+  it("give each address 50 tries in 10 minutes, whoever is signed in", async () => {
+    const t = await setup();
+    for (let i = 0; i < 6; i++) await t.createUser(`u${i}`, `user${i}`);
+    for (let i = 0; i < 50; i++) await t.req("GET", `/cli/device/BCDF-${2000 + i}`, { user: `u${i % 5}`, headers: { "x-forwarded-for": "203.0.113.9" } });
+    expect((await t.req("GET", "/cli/device/BCDF-3000", { user: "u5", headers: { "x-forwarded-for": "203.0.113.9" } })).status).toBe(429);
+    expect((await t.req("GET", "/cli/device/BCDF-3000", { user: "u5", headers: { "x-forwarded-for": "203.0.113.10" } })).status).toBe(404);
+  });
+
+  it("are decided once, by whoever answers first", async () => {
+    const t = await setup();
+    await t.createUser("u1", "ada");
+    await t.createUser("u2", "bob");
+    const code = await start(t);
+    const answers = await Promise.all([
+      t.req("POST", `/cli/device/${code.userCode}/approve`, { user: "u1" }),
+      t.req("POST", `/cli/device/${code.userCode}/approve`, { user: "u2" }),
+      t.req("POST", `/cli/device/${code.userCode}/deny`, { user: "u2" }),
+    ]);
+    expect(answers.map((r) => r.status).sort()).toEqual([200, 404, 404]);
+    const winner = ["u1", "u2", "denied"][answers.findIndex((r) => r.status === 200)];
+    const [row] = await t.db.select().from(deviceCodes).where(eq(deviceCodes.userCode, code.userCode));
+    expect(row!.status === "denied" ? "denied" : row!.userId).toBe(winner);
+  });
+
+  it("that are not shaped like a code are not found", async () => {
+    const t = await setup();
+    await t.createUser("u1", "ada");
+    for (const bad of ["BCDF-12345", "BCDF%001234", "%00", "BCDF-12%00"]) {
+      expect((await t.req("GET", `/cli/device/${bad}`, { user: "u1" })).status).toBe(404);
+      expect((await t.req("POST", `/cli/device/${bad}/approve`, { user: "u1" })).status).toBe(404);
+    }
+  });
+});
+
 describe("client address", () => {
   const req = (xff?: string) => new Request("http://api.test/", { headers: xff ? { "x-forwarded-for": xff } : {} });
   it("is the address the proxy appended, or the socket's", () => {
