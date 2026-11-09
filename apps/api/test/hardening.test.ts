@@ -208,6 +208,26 @@ describe("login codes", () => {
   });
 });
 
+describe("requests from other websites", () => {
+  it("cannot change anything, while the website and the CLI can", async () => {
+    const t = await setup();
+    await t.createUser("u1", "ada");
+    const token = await t.login("u1");
+    const from = (origin: string) => ({ user: "u1", headers: { origin, "content-type": "text/plain" } });
+
+    const forged = await t.req("PATCH", "/me/profile", { ...from("https://evil.test"), body: { displayName: "forged" } });
+    expect(forged.status).toBe(403);
+    expect(await code(forged)).toBe("forbidden_origin");
+    expect((await t.req("DELETE", "/me", from("null"))).status).toBe(403);
+    expect((await t.req("POST", "/cli/device", { body: { machineLabel: "x" }, headers: { origin: "https://web.test.evil.test" } })).status).toBe(403);
+    expect((await json<{ profile: { displayName: string } }>(await t.req("GET", "/me", from("https://evil.test")))).profile.displayName).toBe("ada");
+
+    expect((await t.req("PATCH", "/me/profile", { ...from("https://web.test"), body: { displayName: "Ada" } })).status).toBe(200);
+    expect((await t.req("PATCH", "/me/profile", { ...from("https://www.web.test"), body: { displayName: "Ada L." } })).status).toBe(200);
+    expect((await t.sync(token, [day("2026-11-07", "claude")])).status).toBe(200);
+  });
+});
+
 describe("client address", () => {
   const req = (xff?: string) => new Request("http://api.test/", { headers: xff ? { "x-forwarded-for": xff } : {} });
   it("is the address the proxy appended, or the socket's", () => {

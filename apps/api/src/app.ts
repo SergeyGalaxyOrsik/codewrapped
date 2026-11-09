@@ -54,6 +54,7 @@ const MAX_LIVE_TOKENS = 10;
 const MAX_MACHINES = 10;
 const MAX_SOURCES = 20;
 const USER_CODE_RE = /^[A-Z]{4}-\d{4}$/i;
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 type Vars = { userId: string; tokenId: string };
 
@@ -80,6 +81,13 @@ export function createApp(deps: AppDeps) {
       allowHeaders: ["Content-Type", "Authorization"],
     }),
   );
+
+  // Browsers send Origin with every request that can change state. The CLI sends none and signs in with a Bearer token, not a cookie.
+  app.use("*", async (c, next) => {
+    const origin = c.req.header("origin");
+    if (SAFE_METHODS.has(c.req.method) || origin === undefined || allowedOrigins.includes(origin)) return next();
+    return fail(c, 403, "forbidden_origin", "This request came from another website.");
+  });
 
   const smallBody = bodyLimit({
     maxSize: MAX_BODY_BYTES,
