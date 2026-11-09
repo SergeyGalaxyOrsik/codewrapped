@@ -1,5 +1,5 @@
-import { existsSync } from "node:fs";
-import { copyFile, mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { existsSync, rmSync } from "node:fs";
+import { copyFile, lstat, mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -27,21 +27,79 @@ async function fileStamp(p: string): Promise<string> {
   }
 }
 
+const COPY_PREFIX = "codewrapped-db-";
+const COPY_DIR = /^codewrapped-db-[A-Za-z0-9]{6}$/;
+const STALE_COPY_MS = 60 * 60 * 1000;
+
+/** Temp folders with database copies that are still in use. Removed on exit, Ctrl-C and SIGTERM. */
+const liveCopies = new Set<string>();
+let started: Promise<void> | null = null;
+
+function removeLiveCopies(): void {
+  for (const dir of liveCopies) rmSync(dir, { recursive: true, force: true });
+  liveCopies.clear();
+}
+
+/**
+ * Removes copies left by runs that were killed before they could clean up:
+ * folders named like ours, owned by this user and untouched for an hour.
+ */
+async function sweepStaleCopies(): Promise<void> {
+  const root = tmpdir();
+  const uid = process.getuid?.();
+  for (const name of await readdir(root).catch(() => [])) {
+    if (!COPY_DIR.test(name)) continue;
+    const dir = join(root, name);
+    const s = await lstat(dir).catch(() => null);
+    if (!s?.isDirectory() || (uid !== undefined && s.uid !== uid) || Date.now() - s.mtimeMs < STALE_COPY_MS) continue;
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+function startCopies(): Promise<void> {
+  started ??= (async () => {
+    process.on("exit", removeLiveCopies);
+    for (const signal of ["SIGINT", "SIGTERM"] as const) {
+      const onSignal = () => {
+        removeLiveCopies();
+        process.removeListener(signal, onSignal);
+        // With our listener gone, the signal ends the process the way it would have without us.
+        process.kill(process.pid, signal);
+      };
+      process.on(signal, onSignal);
+    }
+    await sweepStaleCopies();
+  })();
+  return started;
+}
+
 /**
  * Copies a database and its -wal and -shm files into a new temp folder, so a
  * harness that is running never sees us. The copy is retried when the files
  * changed while being copied, which would mix two states of the database.
  */
 async function copyDatabase(file: string): Promise<{ dir: string; copy: string }> {
-  const dir = await mkdtemp(join(tmpdir(), "codewrapped-db-"));
+  await startCopies();
+  const dir = await mkdtemp(join(tmpdir(), COPY_PREFIX));
+  liveCopies.add(dir);
   const copy = join(dir, basename(file));
   const parts = [file, ...SIDE_FILES.map((s) => file + s)];
-  for (let attempt = 0; ; attempt++) {
-    const before = await Promise.all(parts.map(fileStamp));
-    for (const p of parts) if (existsSync(p)) await copyFile(p, join(dir, basename(p)));
-    const after = await Promise.all(parts.map(fileStamp));
-    if (before.join() === after.join() || attempt >= 4) return { dir, copy };
+  try {
+    for (let attempt = 0; ; attempt++) {
+      const before = await Promise.all(parts.map(fileStamp));
+      for (const p of parts) if (existsSync(p)) await copyFile(p, join(dir, basename(p)));
+      const after = await Promise.all(parts.map(fileStamp));
+      if (before.join() === after.join() || attempt >= 4) return { dir, copy };
+    }
+  } catch (e) {
+    await removeCopy(dir);
+    throw e;
   }
+}
+
+async function removeCopy(dir: string): Promise<void> {
+  liveCopies.delete(dir);
+  await rm(dir, { recursive: true, force: true });
 }
 
 type NodeSqlite = { DatabaseSync: new (path: string, opts?: { readOnly?: boolean }) => NodeDb };
@@ -125,16 +183,29 @@ export function applyWal(db: Buffer, wal: Buffer): Buffer {
   return out;
 }
 
+/** Above this, sql.js is not used: it holds the whole database in memory. */
+const SQLJS_MAX_BYTES = 512 * 1024 * 1024;
+
+/** CODEWRAPPED_SQLITE=sql.js forces the fallback, for tests and bug reports. */
+const loadEngine = () => (process.env.CODEWRAPPED_SQLITE === "sql.js" ? Promise.resolve(null) : loadNodeSqlite());
+
+async function refuseTooBigForSqlJs(file: string): Promise<void> {
+  const sizes = await Promise.all([file, `${file}-wal`].map((p) => stat(p).then((s) => s.size, () => 0)));
+  const size = sizes[0]! + sizes[1]!;
+  if (size > SQLJS_MAX_BYTES) throw new Error(`a ${(size / 1e9).toFixed(1)} GB database needs Node 22.13 or newer`);
+}
+
 /**
  * Opens a copy of a SQLite database read-only. Uses node:sqlite when this
- * Node has it (22.13+ and 23.4+), otherwise sql.js. The copy is deleted on close.
+ * Node has it (22.13+ and 23.4+), otherwise sql.js, which refuses databases
+ * over 512 MB. The copy is deleted on close.
  */
 export async function openSnapshot(file: string): Promise<SqliteSnapshot> {
+  const native = await loadEngine();
+  if (!native) await refuseTooBigForSqlJs(file);
   const { dir, copy } = await copyDatabase(file);
-  const cleanup = () => rm(dir, { recursive: true, force: true });
+  const cleanup = () => removeCopy(dir);
   try {
-    // CODEWRAPPED_SQLITE=sql.js forces the fallback, for tests and bug reports.
-    const native = process.env.CODEWRAPPED_SQLITE === "sql.js" ? null : await loadNodeSqlite();
     if (native) {
       const db = new native.DatabaseSync(copy, { readOnly: true });
       return {
@@ -169,9 +240,6 @@ export async function openSnapshot(file: string): Promise<SqliteSnapshot> {
   }
 }
 
-/** Above this, a database is not copied for sql.js, which holds the whole file in memory. */
-const SQLJS_MAX_BYTES = 512 * 1024 * 1024;
-
 /**
  * Opens a database read-only where it is, without a copy, for files too big
  * to copy: Cursor's state.vscdb runs to gigabytes. In WAL mode a reader
@@ -179,12 +247,8 @@ const SQLJS_MAX_BYTES = 512 * 1024 * 1024;
  * it a small file is copied and read with sql.js, a big one is refused.
  */
 export async function openInPlace(file: string): Promise<SqliteSnapshot> {
-  const native = process.env.CODEWRAPPED_SQLITE === "sql.js" ? null : await loadNodeSqlite();
-  if (!native) {
-    const size = (await stat(file)).size;
-    if (size > SQLJS_MAX_BYTES) throw new Error(`a ${(size / 1e9).toFixed(1)} GB database needs Node 22.13 or newer`);
-    return openSnapshot(file);
-  }
+  const native = await loadEngine();
+  if (!native) return openSnapshot(file);
   const db = new native.DatabaseSync(file, { readOnly: true });
   return {
     engine: "node:sqlite",

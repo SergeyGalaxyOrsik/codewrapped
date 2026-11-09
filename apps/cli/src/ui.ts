@@ -13,9 +13,31 @@ const truecolor = /truecolor|24bit/i.test(process.env.COLORTERM ?? "");
 /** Brand ribbon red. Only used for the ribbon line, never for errors. */
 export const ribbon = wrap(truecolor ? "38;2;229;50;45" : "31", "39");
 
+// eslint-disable-next-line no-control-regex
+const UNPRINTABLE = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+
+/**
+ * Removes control characters and bidi overrides, so a name from a log file
+ * or a message from the server cannot move the cursor, recolor the terminal,
+ * set the window title or reorder the text around it.
+ */
+export function safeText(s: string): string {
+  return s.replace(UNPRINTABLE, "");
+}
+
+/** A copy with safeText applied to every string, keys included. */
+export function safeDeep<T>(value: T): T {
+  if (typeof value === "string") return safeText(value) as T;
+  if (Array.isArray(value)) return value.map(safeDeep) as T;
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [safeText(k), safeDeep(v)])) as T;
+  }
+  return value;
+}
+
 export function tildify(p: string): string {
   const home = homedir();
-  return p.startsWith(home) ? `~${p.slice(home.length)}` : p;
+  return safeText(p.startsWith(home) ? `~${p.slice(home.length)}` : p);
 }
 
 export const int = formatInt;

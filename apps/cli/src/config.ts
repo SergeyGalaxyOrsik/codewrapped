@@ -1,6 +1,6 @@
 import type { Source } from "@codewrapped/stats";
 import { randomBytes } from "node:crypto";
-import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { site } from "@codewrapped/brand";
@@ -49,21 +49,41 @@ export async function loadConfig(dir = configDir()): Promise<Config> {
   return config;
 }
 
+/**
+ * Writes a file in the config folder readable by this user only. The data
+ * goes to a new file first (O_EXCL, so a planted symlink is never followed)
+ * and is renamed over the old one, which also replaces a symlink rather than
+ * writing through it.
+ */
+async function writePrivate(dir: string, name: string, data: unknown): Promise<void> {
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  await chmod(dir, 0o700);
+  const path = join(dir, name);
+  const temp = join(dir, `.${name}.${randomBytes(6).toString("hex")}.tmp`);
+  try {
+    const file = await open(temp, "wx", 0o600);
+    try {
+      await file.writeFile(`${JSON.stringify(data, null, 2)}\n`);
+    } finally {
+      await file.close();
+    }
+    await rename(temp, path);
+  } catch (e) {
+    await rm(temp, { force: true });
+    throw e;
+  }
+}
+
 export async function saveConfig(config: Config, dir = configDir()): Promise<void> {
-  await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, "config.json"), `${JSON.stringify(config, null, 2)}\n`);
+  await writePrivate(dir, "config.json", config);
 }
 
 export async function loadAuth(dir = configDir()): Promise<AuthFile | null> {
   return readJson<AuthFile>(join(dir, "auth.json"));
 }
 
-/** The token file is readable by this user only. */
 export async function saveAuth(auth: AuthFile, dir = configDir()): Promise<void> {
-  await mkdir(dir, { recursive: true });
-  const path = join(dir, "auth.json");
-  await writeFile(path, `${JSON.stringify(auth, null, 2)}\n`, { mode: 0o600 });
-  await chmod(path, 0o600);
+  await writePrivate(dir, "auth.json", auth);
 }
 
 export async function removeAuth(dir = configDir()): Promise<void> {

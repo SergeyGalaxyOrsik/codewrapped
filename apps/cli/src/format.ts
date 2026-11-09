@@ -1,8 +1,12 @@
-import { describeAutomated, formatDuration, formatShare, harnessSplit, sourceLabel, WEEKDAYS, type Summary } from "@codewrapped/stats";
-import { bold, compact, dim, hours, int, pad, padStart, ribbon, shortName, usd } from "./ui";
+import { MAX_LINE_BYTES, type ParseWarnings } from "@codewrapped/parser";
+import { describeAutomated, formatDuration, formatShare, harnessSplit, SOURCE_NAMES, SOURCES, sourceLabel, WEEKDAYS, type Source, type Summary } from "@codewrapped/stats";
+import { bold, compact, dim, hours, int, pad, padStart, ribbon, safeDeep, safeText, shortName, tildify, usd } from "./ui";
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 const plural = (n: number, one: string, many = `${one}s`) => `${int(n)} ${n === 1 ? one : many}`;
+
+/** "a, b and c". */
+export const listText = (items: string[]) => items.join(", ").replace(/, ([^,]*)$/, " and $1");
 
 export function periodLabel(s: Summary): string {
   return s.range.days === 1 ? "today" : `last ${s.range.days} days`;
@@ -30,7 +34,8 @@ function sideBySide(columns: string[][], gap = 4): string[] {
   return out;
 }
 
-export function formatSummary(s: Summary): string {
+export function formatSummary(summary: Summary): string {
+  const s = safeDeep(summary);
   const t = s.totals;
   const lines: string[] = [];
   const label = periodLabel(s);
@@ -88,4 +93,38 @@ export function formatSummary(s: Summary): string {
   lines.push("");
   lines.push(`  ${bold(`${s.archetype.name}.`)} ${s.archetype.sentence}`);
   return lines.join("\n");
+}
+
+/** Adapters report a database they could not open as this unknown event. */
+const UNREADABLE_DATABASE = /^[^:]+:\(unreadable database: (.*)\)$/;
+const LISTED_FILES = 3;
+
+/** What was left out of the stats, one sentence per line. */
+export function warningLines(w: Record<Source, ParseWarnings>): string[] {
+  const lines: string[] = [];
+  const files: string[] = [];
+  let bad = 0;
+  let long = 0;
+  let unknown = 0;
+  for (const s of SOURCES) {
+    bad += w[s].badLines;
+    long += w[s].longLines ?? 0;
+    for (const f of w[s].unreadableFiles ?? []) files.push(`${tildify(f.file)} (${safeText(f.reason)})`);
+    for (const [event, n] of Object.entries(w[s].unknownEvents)) {
+      const db = UNREADABLE_DATABASE.exec(event);
+      if (db) lines.push(`Could not read the ${SOURCE_NAMES[s]} database (${safeText(db[1]!)}), so it is not counted.`);
+      else unknown += n;
+    }
+  }
+  if (files.length > 0) {
+    const more = files.length > LISTED_FILES ? ` and ${int(files.length - LISTED_FILES)} more` : "";
+    const which = files.length === 1 ? "this file" : "these files";
+    lines.push(`Could not read ${which}, so ${files.length === 1 ? "it is" : "they are"} not counted: ${files.slice(0, LISTED_FILES).join(", ")}${more}.`);
+  }
+  const parts: string[] = [];
+  if (bad > 0) parts.push(`${int(bad)} unreadable ${bad === 1 ? "line" : "lines"}`);
+  if (long > 0) parts.push(`${int(long)} ${long === 1 ? "line" : "lines"} over ${MAX_LINE_BYTES / 1024 / 1024} MB`);
+  if (unknown > 0) parts.push(`${int(unknown)} unknown ${unknown === 1 ? "event" : "events"}`);
+  if (parts.length > 0) lines.push(`Skipped ${listText(parts)}.`);
+  return lines;
 }

@@ -30,7 +30,7 @@ export {
 export { listAll, listJsonl } from "./files";
 export { MAX_GAP_MS, basename } from "./builder";
 export { createGitRepoResolver, repoNameFromPath, repoNameFromUrl, type RepoResolver } from "./repos";
-export type { ParseWarnings } from "./lines";
+export { MAX_LINE_BYTES, type ParseWarnings } from "./lines";
 
 export type ParseOptions = {
   /** Log files per harness, as listed by findLocalLogs. */
@@ -53,7 +53,7 @@ export async function parseFiles(opts: ParseOptions): Promise<ParseResult> {
   for (const adapter of ADAPTERS) {
     const agg = new Aggregator(adapter.id, clock, opts.repoResolver);
     await adapter.parse(opts.files[adapter.id] ?? [], agg.emit, warnings[adapter.id]);
-    aggregates.push(...agg.result());
+    for (const day of agg.result()) aggregates.push(day);
   }
   return { aggregates, warnings };
 }
