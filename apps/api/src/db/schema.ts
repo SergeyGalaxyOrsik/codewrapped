@@ -139,7 +139,7 @@ export const dailyStats = pgTable(
     flag: text("flag"),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [primaryKey({ columns: [t.userId, t.machineId, t.source, t.day] }), index("daily_stats_user_day").on(t.userId, t.day)],
+  (t) => [primaryKey({ columns: [t.userId, t.machineId, t.source, t.day] }), index("daily_stats_user_day").on(t.userId, t.day), index("daily_stats_day").on(t.day)],
 );
 
 export const authSchema = { user: users, session: sessions, account: accounts, verification: verifications };

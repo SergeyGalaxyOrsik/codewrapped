@@ -15,6 +15,13 @@
       "when": 1794146810564,
       "tag": "0001_leaderboard",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794220720874,
+      "tag": "0002_daily_stats_day",
+      "breakpoints": true
     }
   ]
 }

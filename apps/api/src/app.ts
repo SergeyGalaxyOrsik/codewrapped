@@ -7,6 +7,7 @@ import { buildPublicProfile, isKnownSource, knownRows, PERIODS, todayIn, type Da
 import { webOrigins } from "./config";
 import type { Db } from "./db";
 import { cliTokens, dailyStats, DEFAULT_VISIBILITY, deviceCodes, profiles, users, type Visibility } from "./db/schema";
+import { Boards, type BoardRange } from "./lib/boards";
 import { TtlCache } from "./lib/cache";
 import { randomId, randomToken, sha256, userCode } from "./lib/crypto";
 import { fail } from "./lib/errors";
@@ -23,6 +24,8 @@ import {
   type BoardMetric,
   type BoardPeriod,
   type Candidate,
+  type Ranked,
+  type ScoredDay,
 } from "./lib/leaderboard";
 import { flagDay } from "./lib/plausibility";
 import { checkDays, HANDLE_RE, SyncBody } from "./validation";
@@ -38,6 +41,8 @@ export type AppDeps = {
   /** When the user's GitHub account was created, for accounts made before that was recorded at sign-up. */
   githubCreatedAt?: (userId: string) => Promise<Date | null>;
   syncLimit?: { requests: number; windowMs: number };
+  /** How often a changed leaderboard is rebuilt at most. */
+  boardRefreshMs?: number;
 };
 
 const DEVICE_TTL_MS = 10 * 60_000;
@@ -50,7 +55,6 @@ export function createApp(deps: AppDeps) {
   const { db } = deps;
   const now = deps.now ?? (() => new Date());
   const cache = new TtlCache<PublicProfile>(5 * 60_000);
-  const boards = new TtlCache<Candidate[]>(5 * 60_000);
   /** Users GitHub was asked about lately, so a failing lookup is not repeated on every request. */
   const askedGithub = new TtlCache<true>(60 * 60_000);
   const syncLimiter = new RateLimiter(deps.syncLimit?.requests ?? 30, deps.syncLimit?.windowMs ?? 10 * 60_000);
@@ -264,7 +268,7 @@ export function createApp(deps: AppDeps) {
         .where(eq(profiles.userId, userId))
         .returning({ handle: profiles.handle });
       await bust(userId);
-      boards.bust("");
+      boards.markStale();
       return c.json({
         received: days.length,
         skipped: skipped.slice(0, 20),
@@ -279,15 +283,15 @@ export function createApp(deps: AppDeps) {
   const today = () => now().toISOString().slice(0, 10);
 
   /** Everyone with synced days in the range, scored. Opt-in and eligibility are decided per board. */
-  const candidates = async (period: BoardPeriod): Promise<Candidate[]> => {
-    const { start, end } = boardRange(period, today());
-    const key = `${start}:${end}`;
-    const hit = boards.get(key);
-    if (hit) return hit;
+  const buildBoard = async (_period: BoardPeriod, { start, end }: BoardRange): Promise<Candidate[]> => {
+    // Only the fields scoring reads: the whole row is many times larger.
     const rows = await db
       .select({
         userId: dailyStats.userId,
-        data: dailyStats.data,
+        day: dailyStats.day,
+        source: dailyStats.source,
+        activeMask: sql<string>`${dailyStats.data}->>'activeMask'`,
+        tokens: sql<DailyAggregate["tokens"]>`${dailyStats.data}->'tokens'`,
         flag: dailyStats.flag,
         handle: profiles.handle,
         displayName: profiles.displayName,
@@ -301,16 +305,16 @@ export function createApp(deps: AppDeps) {
       .innerJoin(profiles, eq(profiles.userId, dailyStats.userId))
       .innerJoin(users, eq(users.id, dailyStats.userId))
       .where(and(gte(dailyStats.day, start), lte(dailyStats.day, end)));
-    const byUser = new Map<string, { first: (typeof rows)[number]; days: (typeof rows)[number]["data"][]; flags: Array<{ day: string; flag: string }> }>();
+    const byUser = new Map<string, { first: (typeof rows)[number]; days: ScoredDay[]; flags: Array<{ day: string; flag: string }> }>();
     // Harnesses the registry does not know yet never count toward a board.
     for (const r of rows) {
-      if (!isKnownSource(r.data.source)) continue;
+      if (!isKnownSource(r.source)) continue;
       const u = byUser.get(r.userId) ?? { first: r, days: [], flags: [] };
-      u.days.push(r.data);
-      if (r.flag !== null) u.flags.push({ day: r.data.day, flag: r.flag });
+      u.days.push({ day: r.day, activeMask: r.activeMask, tokens: r.tokens });
+      if (r.flag !== null) u.flags.push({ day: r.day, flag: r.flag });
       byUser.set(r.userId, u);
     }
-    const list: Candidate[] = [...byUser.values()].map(({ first, days, flags }) => {
+    return [...byUser.values()].map(({ first, days, flags }) => {
       const hold = first.trusted ? null : holdFor(first.githubCreatedAt, flags, now());
       return {
         userId: first.userId,
@@ -324,9 +328,14 @@ export function createApp(deps: AppDeps) {
         scores: score(days),
       };
     });
-    boards.set(key, list);
-    return list;
   };
+
+  const boards = new Boards({
+    build: buildBoard,
+    range: (period) => boardRange(period, today()),
+    refreshMs: deps.boardRefreshMs ?? 30_000,
+    maxAgeMs: 5 * 60_000,
+  });
 
   const boardQuery = (c: Context<{ Variables: Vars }>) => {
     const period = (c.req.query("period") ?? "week") as BoardPeriod;
@@ -338,7 +347,7 @@ export function createApp(deps: AppDeps) {
   app.get("/leaderboard", async (c) => {
     const q = boardQuery(c);
     if (!q) return fail(c, 400, "invalid_board", `Use period ${BOARD_PERIODS.join(" or ")} and metric ${BOARD_METRICS.join(", ")}.`);
-    const ranked = rank((await candidates(q.period)).filter((x) => x.optedIn && x.eligible), q.metric);
+    const ranked = rank((await boards.get(q.period)).filter((x) => x.optedIn && x.eligible), q.metric);
     c.header("Cache-Control", "public, max-age=60");
     return c.json({
       ...q,
@@ -369,17 +378,17 @@ export function createApp(deps: AppDeps) {
       .update(users)
       .set({ githubCreatedAt: at })
       .where(and(eq(users.id, userId), isNull(users.githubCreatedAt)));
-    boards.bust("");
+    boards.markStale();
     return true;
   };
 
   app.get("/leaderboard/me", requireSession, async (c) => {
     const q = boardQuery(c);
     if (!q) return fail(c, 400, "invalid_board", `Use period ${BOARD_PERIODS.join(" or ")} and metric ${BOARD_METRICS.join(", ")}.`);
-    let all = await candidates(q.period);
+    let all = await boards.get(q.period);
     let me = all.find((x) => x.userId === c.get("userId"));
     if (me?.hold?.reason === "account_age_unknown" && (await fillGithubAge(me.userId))) {
-      all = await candidates(q.period);
+      all = await boards.fresh(q.period);
       me = all.find((x) => x.userId === c.get("userId"));
     }
     const [p] = await db.select({ optedIn: profiles.leaderboard }).from(profiles).where(eq(profiles.userId, c.get("userId")));
@@ -395,9 +404,19 @@ export function createApp(deps: AppDeps) {
     });
   });
 
-  /** "Top N%" this month by hours, among all eligible active users, opted in or not. */
-  const standing = async (userId: string): Promise<PublicProfile["standing"]> => {
-    const ranked = rank((await candidates("month")).filter((x) => x.eligible), "hours");
+  const monthRanks = new WeakMap<Candidate[], Ranked[]>();
+  /**
+   * "Top N%" this month by hours, among all eligible active users, opted in or not.
+   * Read from the last built board: a profile view never builds one.
+   */
+  const standing = (userId: string): PublicProfile["standing"] => {
+    const board = boards.peek("month");
+    if (!board) return null;
+    let ranked = monthRanks.get(board);
+    if (!ranked) {
+      ranked = rank(board.filter((x) => x.eligible), "hours");
+      monthRanks.set(board, ranked);
+    }
     const pct = percentile(ranked, userId);
     return pct === null ? null : { percentile: pct, period: "month" };
   };
@@ -421,11 +440,10 @@ export function createApp(deps: AppDeps) {
         period,
         todayIn(p.timeZone, now()),
       );
-      body.standing = await standing(p.userId);
       cache.set(key, body);
     }
     c.header("Cache-Control", "public, max-age=60");
-    return c.json(body);
+    return c.json({ ...body, standing: standing(p.userId) });
   });
 
   // ---- signed-in user ----
@@ -533,7 +551,7 @@ export function createApp(deps: AppDeps) {
       .set(set)
       .where(eq(profiles.userId, c.get("userId")))
       .returning({ leaderboard: profiles.leaderboard, xHandle: profiles.xHandle });
-    boards.bust("");
+    boards.markStale();
     await bust(c.get("userId"));
     return c.json(p ?? { leaderboard: false, xHandle: null });
   });

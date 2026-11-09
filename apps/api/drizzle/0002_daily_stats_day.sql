@@ -1,0 +1,1 @@
+CREATE INDEX "daily_stats_day" ON "daily_stats" USING btree ("day");

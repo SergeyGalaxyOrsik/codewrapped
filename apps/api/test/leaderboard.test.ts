@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { PublicProfile } from "@codewrapped/stats";
 import { accounts, dailyStats, profiles, users } from "../src/db/schema";
 import { githubCreatedAt } from "../src/lib/github";
@@ -95,9 +95,11 @@ describe("leaderboards", () => {
     expect(before.entries.map((e) => e.handle)).toEqual(["ada"]);
 
     await t.db.update(profiles).set({ leaderboardTrusted: true }).where(eq(profiles.userId, "new"));
-    await t.sync(await t.login("ada"), []); // any sync drops the board cache
-    const after = await json<Board>(await t.req("GET", "/leaderboard?period=week&metric=hours"));
-    expect(after.entries.map((e) => e.handle)).toEqual(["new", "ada"]);
+    await t.sync(await t.login("ada"), []); // any sync rebuilds the boards
+    await vi.waitFor(async () => {
+      const after = await json<Board>(await t.req("GET", "/leaderboard?period=week&metric=hours"));
+      expect(after.entries.map((e) => e.handle)).toEqual(["new", "ada"]);
+    });
   });
 
   it("tell you why your days wait for review", async () => {
@@ -148,11 +150,15 @@ describe("leaderboards", () => {
 
     expect((await t.req("PATCH", "/me/leaderboard", { user: "bob", body: { xHandle: "@bob_codes" } })).status).toBe(200);
     expect((await t.req("PATCH", "/me/leaderboard", { user: "bob", body: { xHandle: "not a handle!" } })).status).toBe(400);
-    const board = await json<Board>(await t.req("GET", "/leaderboard?period=week&metric=hours"));
-    expect(board.entries.find((e) => e.handle === "bob")?.xHandle).toBe("bob_codes");
+    await vi.waitFor(async () => {
+      const board = await json<Board>(await t.req("GET", "/leaderboard?period=week&metric=hours"));
+      expect(board.entries.find((e) => e.handle === "bob")?.xHandle).toBe("bob_codes");
+    });
 
     await t.req("PATCH", "/me/leaderboard", { user: "bob", body: { enabled: false } });
-    expect((await json<Board>(await t.req("GET", "/leaderboard?period=week&metric=hours"))).entries.map((e) => e.handle)).toEqual(["ada"]);
+    await vi.waitFor(async () => {
+      expect((await json<Board>(await t.req("GET", "/leaderboard?period=week&metric=hours"))).entries.map((e) => e.handle)).toEqual(["ada"]);
+    });
   });
 
   it("show a percentile on the profile only once 200 people are active this month", async () => {
@@ -170,10 +176,14 @@ describe("leaderboards", () => {
     await t.db.insert(dailyStats).values({ userId: "top", machineId: "m", source: "claude", day: top.day, data: top, schemaVersion: 1 });
 
     await insertUsers(150, 0);
+    await t.req("GET", "/leaderboard?period=month");
     expect((await json<PublicProfile>(await t.req("GET", "/u/top"))).standing).toBeNull();
 
     await insertUsers(60, 150);
     const fresh = await setupFrom(t);
+    // A profile view never builds a board: the standing appears once the month board exists.
+    expect((await json<PublicProfile>(await fresh.request("/u/top"))).standing).toBeNull();
+    await fresh.request("/leaderboard?period=month");
     expect((await json<PublicProfile>(await fresh.request("/u/top"))).standing).toEqual({ percentile: 1, period: "month" });
   }, 60_000);
 });

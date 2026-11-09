@@ -23,6 +23,7 @@ export async function setup(opts: { syncLimit?: { requests: number; windowMs: nu
     now: () => clock.now,
     syncLimit: opts.syncLimit,
     githubCreatedAt: opts.githubCreatedAt,
+    boardRefreshMs: 0,
   });
 
   const req = (method: string, path: string, init: { body?: unknown; user?: string; token?: string; headers?: Record<string, string> } = {}) =>
