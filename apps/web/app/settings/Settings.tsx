@@ -7,6 +7,7 @@ import { buttonPrimary, buttonSecondary } from "@/components/Chrome";
 import { setAccount } from "@/components/Account";
 import { SignInButton } from "@/components/SignInButton";
 import { apiCall, signOut } from "@/lib/api";
+import { plainText } from "@/lib/text";
 
 type Me = {
   name: string;
@@ -292,7 +293,7 @@ export function Settings() {
             {tokens.map((t) => (
               <li key={t.id} className="flex items-center justify-between gap-4 border-t border-border py-3 first:border-t-0">
                 <div className="flex min-w-0 flex-col">
-                  <span className="break-words text-[15px]">{t.machineLabel}</span>
+                  <span className="break-words text-[15px]">{plainText(t.machineLabel)}</span>
                   <span className="text-[13px] text-muted">
                     Connected {when(t.createdAt)}, last sync {when(t.lastUsedAt)}
                   </span>
@@ -302,7 +303,7 @@ export function Settings() {
                   className={buttonSecondary}
                   onClick={async () => {
                     const res = await apiCall("DELETE", `/me/tokens/${t.id}`);
-                    setNotice(res.ok ? `Disconnected ${t.machineLabel}. Its synced days stay.` : res.error.message);
+                    setNotice(res.ok ? `Disconnected ${plainText(t.machineLabel)}. Its synced days stay.` : res.error.message);
                     if (res.ok) setTokens(tokens.filter((x) => x.id !== t.id));
                   }}
                 >

@@ -6,14 +6,17 @@ import { Footer, Header } from "@/components/Chrome";
 import { MyRank } from "@/components/MyRank";
 import { BOARD_METRIC_LABELS, BOARD_PERIOD_LABELS, getBoard, type BoardMetric, type BoardPeriod } from "@/lib/api";
 
-// Rendered on every request: the API caches the board and drops it the moment someone syncs or opts in.
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 type Params = { params: Promise<{ period: string; metric: string }> };
 
 const PERIODS = Object.keys(BOARD_PERIOD_LABELS) as BoardPeriod[];
 const METRICS = Object.keys(BOARD_METRIC_LABELS) as BoardMetric[];
 const href = (p: BoardPeriod, m: BoardMetric) => (p === "week" && m === "hours" ? "/leaderboard" : `/leaderboard/${p}/${m}`);
+
+export function generateStaticParams(): Array<{ period: string; metric: string }> {
+  return [];
+}
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { period, metric } = (await params) as { period: BoardPeriod; metric: BoardMetric };

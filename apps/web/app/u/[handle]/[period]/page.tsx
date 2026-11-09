@@ -7,18 +7,23 @@ import { Calendar } from "@/components/Calendar";
 import { Card } from "@/components/Card";
 import { buttonPrimary, Footer, Header } from "@/components/Chrome";
 import { CopyCommand } from "@/components/CopyCommand";
-import { getProfile, PERIOD_LABELS } from "@/lib/api";
+import { getProfile, parseHandle, PERIOD_LABELS } from "@/lib/api";
+import { plainText } from "@/lib/text";
 
-// Rendered per request from the API's cache. Per-URL ISR served each period from its own stale copy,
-// so a renamed profile showed the old name on some periods and the new one on others.
-export const dynamic = "force-dynamic";
+// Each period is cached on its own. expireTime in next.config bounds how long one can lag the others after a rename.
+export const revalidate = 60;
+
+export function generateStaticParams(): Array<{ handle: string; period: string }> {
+  return [];
+}
 
 type Params = { params: Promise<{ handle: string; period: string }> };
 
 async function load(params: Params["params"]): Promise<{ data: PublicProfile; period: Period } | null> {
-  const { handle, period } = await params;
-  if (!PERIODS.includes(period as Period)) return null;
-  const data = await getProfile(decodeURIComponent(handle).replace(/^@/, ""), period as Period);
+  const { handle: segment, period } = await params;
+  const handle = parseHandle(segment);
+  if (!handle || !PERIODS.includes(period as Period)) return null;
+  const data = await getProfile(handle, period as Period);
   return data ? { data, period: period as Period } : null;
 }
 
@@ -81,7 +86,7 @@ export default async function ProfilePage({ params }: Params) {
           <div className="flex items-center gap-4">
             {profile.avatarUrl && <img src={profile.avatarUrl} alt="" width={56} height={56} className="size-14 rounded-full border border-border" />}
             <div className="flex flex-col">
-              <h1 className="text-[26px] font-semibold tracking-[-0.02em]">{profile.displayName ?? `@${profile.handle}`}</h1>
+              <h1 className="text-[26px] font-semibold tracking-[-0.02em]">{plainText(profile.displayName ?? "") || `@${profile.handle}`}</h1>
               <span className="text-[15px] text-muted">@{profile.handle}</span>
             </div>
           </div>

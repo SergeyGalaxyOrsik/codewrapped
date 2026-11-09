@@ -37,33 +37,43 @@ export const BOARD_METRIC_LABELS: Record<BoardMetric, string> = { hours: "Hours"
 
 /**
  * Server-side fetch of a leaderboard. Null when the API is down.
- * Uncached by default, like profiles: the API keeps the board in memory and clears it
- * on every sync and opt-in, so the table agrees with "You are #N" above it.
- * Pass `revalidate` (seconds) where a slightly stale board is fine.
+ * Cached for a minute under the "leaderboard" tag. "You are #N" above the table is fetched
+ * live in the browser, so it can be up to that minute ahead of the table.
  */
-export async function getBoard(period: BoardPeriod, metric: BoardMetric, opts: { revalidate?: number } = {}): Promise<Board | null> {
+export async function getBoard(period: BoardPeriod, metric: BoardMetric, { revalidate = 60 }: { revalidate?: number } = {}): Promise<Board | null> {
   try {
-    const res = await fetch(
-      `${API_URL}/leaderboard?period=${period}&metric=${metric}`,
-      opts.revalidate === undefined ? { cache: "no-store" } : { next: { revalidate: opts.revalidate } },
-    );
+    const res = await fetch(`${API_URL}/leaderboard?period=${period}&metric=${metric}`, { next: { revalidate, tags: ["leaderboard"] } });
     return res.ok ? ((await res.json()) as Board) : null;
   } catch {
     return null;
   }
 }
 
+// Mirrors HANDLE_RE in apps/api/src/validation.ts, so malformed handles never reach the API or the cache.
+const HANDLE_RE = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/;
+
+/** The handle in a URL segment, lowercase and without "@", or null when the segment cannot be a handle. */
+export function parseHandle(segment: string): string | null {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(segment);
+  } catch {
+    return null;
+  }
+  const handle = decoded.replace(/^@/, "").toLowerCase();
+  return HANDLE_RE.test(handle) ? handle : null;
+}
+
 /**
  * Server-side fetch of a public profile. Null when the handle does not exist.
- * Uncached by default: the API keeps its own cache and clears it when the owner
- * syncs or edits the profile, so every period shows the same name and numbers.
- * Pass `revalidate` (seconds) where a slightly stale profile is fine.
+ * Cached for a minute under the tag `profile:<handle>`. Each period is its own cache entry,
+ * and next.config's expireTime caps how stale a rarely viewed period can get, so a rename
+ * reaches every period within minutes.
  */
-export async function getProfile(handle: string, period: Period, opts: { revalidate?: number } = {}): Promise<PublicProfile | null> {
-  const res = await fetch(
-    `${API_URL}/u/${encodeURIComponent(handle)}?period=${period}`,
-    opts.revalidate === undefined ? { cache: "no-store" } : { next: { revalidate: opts.revalidate } },
-  );
+export async function getProfile(handle: string, period: Period, { revalidate = 60 }: { revalidate?: number } = {}): Promise<PublicProfile | null> {
+  const res = await fetch(`${API_URL}/u/${encodeURIComponent(handle)}?period=${period}`, {
+    next: { revalidate, tags: [`profile:${handle.toLowerCase()}`] },
+  });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Profile request failed with ${res.status}`);
   return (await res.json()) as PublicProfile;
