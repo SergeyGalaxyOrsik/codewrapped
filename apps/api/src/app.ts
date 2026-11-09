@@ -2,6 +2,7 @@ import { and, count, desc, eq, gt, gte, isNull, lte, max, min, notInArray, sql }
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
+import { secureHeaders } from "hono/secure-headers";
 import { z } from "zod";
 import { addDays, buildPublicProfile, isKnownSource, knownRows, PERIODS, todayIn, type DailyAggregate, type Period, type PublicProfile } from "@codewrapped/stats";
 import { webOrigins } from "./config";
@@ -71,6 +72,16 @@ export function createApp(deps: AppDeps) {
   const codeTriesByIp = new RateLimiter(50, 10 * 60_000);
   const app = new Hono<{ Variables: Vars }>();
   const allowedOrigins = webOrigins(deps.webUrl);
+
+  app.use(
+    "*",
+    secureHeaders({
+      strictTransportSecurity: "max-age=63072000; includeSubDomains",
+      // Not same-origin: the website on the sibling subdomain still loads responses from here.
+      crossOriginResourcePolicy: "same-site",
+      xFrameOptions: "DENY",
+    }),
+  );
 
   app.use(
     "*",

@@ -228,6 +228,18 @@ describe("requests from other websites", () => {
   });
 });
 
+describe("security headers", () => {
+  it("are on every response, errors included", async () => {
+    const t = await setup();
+    for (const res of [await t.req("GET", "/health"), await t.req("GET", "/u/nobody"), await t.req("POST", "/cli/device", { body: "x".repeat(20_000) })]) {
+      expect(res.headers.get("strict-transport-security")).toBe("max-age=63072000; includeSubDomains");
+      expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(res.headers.get("x-frame-options")).toBe("DENY");
+      expect(res.headers.get("referrer-policy")).toBe("no-referrer");
+    }
+  });
+});
+
 describe("client address", () => {
   const req = (xff?: string) => new Request("http://api.test/", { headers: xff ? { "x-forwarded-for": xff } : {} });
   it("is the address the proxy appended, or the socket's", () => {
