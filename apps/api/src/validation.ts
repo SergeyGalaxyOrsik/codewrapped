@@ -2,7 +2,12 @@ import { z } from "zod";
 import { MASK_BASE64_LENGTH, decodeMask, type DailyAggregate } from "@codewrapped/stats";
 
 const count = z.number().finite().nonnegative().max(1e13);
-const name = z.string().min(1).max(200);
+/** Keys become property names on plain objects, so none may name an inherited one such as constructor or __proto__. */
+const name = z
+  .string()
+  .min(1)
+  .max(200)
+  .refine((k) => !(k in Object.prototype), "reserved name");
 /** Keyed counts such as tools or files. Capped so one row stays small. */
 const counts = z.record(name, count).refine((r) => Object.keys(r).length <= 500, "too many keys");
 

@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import type { DailyAggregate } from "@codewrapped/stats";
-import { deviceCodes, verifications } from "../src/db/schema";
+import { dailyStats, deviceCodes, verifications } from "../src/db/schema";
 import { purgeExpired } from "../src/lib/purge";
 import { clientIp } from "../src/lib/ratelimit";
 import { day, setup } from "./helpers";
@@ -92,6 +92,41 @@ describe("synced days", () => {
     expect(body.skipped).toEqual([expect.objectContaining({ index: 0, day: "2026-11-07" })]);
     const p = await json<{ summary: { totals: { tokens: { headline: number } } } }>(await t.req("GET", "/u/ada?period=7d"));
     expect(p.summary.totals.tokens.headline).toBe(1007);
+  });
+});
+
+describe("names in synced rows", () => {
+  it("never name a property every object inherits", async () => {
+    const t = await setup();
+    await t.createUser("u1", "ada");
+    const token = await t.login("u1");
+    const raw = (n: number, field: string, key: string) => {
+      const row = JSON.stringify(day(`2026-11-0${n}`, "claude"));
+      const value = field === "repos" ? '{"minutes":1,"tokens":1}' : field === "models" ? '{"tokens":1,"cacheRead":0,"costUsd":null}' : "1";
+      return row.replace(`"${field}":{`, `"${field}":{${JSON.stringify(key)}:${value},`);
+    };
+    const rows = [
+      raw(1, "files", "__proto__"),
+      raw(2, "files", "constructor"),
+      raw(3, "tools", "toString"),
+      raw(4, "repos", "valueOf"),
+      raw(5, "models", "hasOwnProperty"),
+      raw(6, "files", "__defineGetter__"),
+      raw(7, "files", "constructor.ts"),
+    ];
+    const res = await t.req("POST", "/sync", { token, body: `{"machineId":"machine-aaaa","timeZone":"UTC","days":[${rows.join(",")}]}` });
+    const body = await json<{ received: number; skipped: Array<{ index: number; reason: string }> }>(res);
+    expect(body.received).toBe(2);
+    expect(body.skipped.map((s) => [s.index, s.reason.split(":")[0]])).toEqual([
+      [1, "files.constructor"],
+      [2, "tools.toString"],
+      [3, "repos.valueOf"],
+      [4, "models.hasOwnProperty"],
+      [5, "files.__defineGetter__"],
+    ]);
+    // zod drops a __proto__ key before any key check runs, so that row is stored without it.
+    const [stored] = await t.db.select({ data: dailyStats.data }).from(dailyStats).where(eq(dailyStats.day, "2026-11-01"));
+    expect(Object.keys(stored!.data.files)).toEqual(["page.tsx"]);
   });
 });
 
