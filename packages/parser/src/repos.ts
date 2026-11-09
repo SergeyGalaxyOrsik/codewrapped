@@ -59,11 +59,51 @@ function commonGitDir(root: string): string | null {
   }
 }
 
+/** A git config value: quotes removed, escapes applied, a # or ; comment outside quotes dropped. */
+function configValue(raw: string): string {
+  let out = "";
+  let quoted = false;
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw[i]!;
+    if (c === '"') quoted = !quoted;
+    else if (c === "\\" && i + 1 < raw.length) {
+      const next = raw[++i]!;
+      out += next === "n" ? "\n" : next === "t" ? "\t" : next === "b" ? "\b" : next;
+    } else if (!quoted && (c === "#" || c === ";")) break;
+    else out += c;
+  }
+  return out.trim();
+}
+
+/**
+ * The first url of each remote in a git config file, in file order. Section
+ * and key names are case-insensitive; remote names are not, except in the
+ * old [remote.name] form.
+ */
+function remoteUrls(config: string): Map<string, string> {
+  const urls = new Map<string, string>();
+  let remote: string | null = null;
+  for (let line of config.split(/\r?\n/)) {
+    const header = /^\s*\[\s*([A-Za-z0-9.-]+)(?:\s+"((?:[^"\\]|\\.)*)")?\s*\](.*)$/.exec(line);
+    if (header) {
+      const name = header[1]!;
+      const sub = header[2];
+      const dot = name.indexOf(".");
+      if (sub !== undefined) remote = name.toLowerCase() === "remote" ? sub.replace(/\\(.)/g, "$1") : null;
+      else remote = dot > 0 && name.slice(0, dot).toLowerCase() === "remote" ? name.slice(dot + 1).toLowerCase() : null;
+      line = header[3]!;
+    }
+    if (remote === null || urls.has(remote)) continue;
+    const entry = /^\s*([A-Za-z][A-Za-z0-9-]*)\s*=(.*)$/.exec(line);
+    if (entry && entry[1]!.toLowerCase() === "url") urls.set(remote, configValue(entry[2]!));
+  }
+  return urls;
+}
+
 function originName(gitDir: string): string | null {
   try {
-    const config = readFileSync(join(gitDir, "config"), "utf8");
-    const origin = /\[remote "origin"\]([^[]*)/.exec(config)?.[1] ?? /\[remote "[^"]+"\]([^[]*)/.exec(config)?.[1];
-    const url = origin && /^\s*url\s*=\s*(.+)$/m.exec(origin)?.[1];
+    const urls = remoteUrls(readFileSync(join(gitDir, "config"), "utf8"));
+    const url = urls.get("origin") ?? urls.values().next().value;
     return url ? repoNameFromUrl(url) : null;
   } catch {
     return null;

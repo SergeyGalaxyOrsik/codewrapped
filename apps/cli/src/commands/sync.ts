@@ -2,7 +2,7 @@ import { createInterface } from "node:readline/promises";
 import { addDays, type DailyAggregate, type Source } from "@codewrapped/stats";
 import { api, ApiError } from "../api";
 import { apiUrl, loadAuth, loadConfig, saveConfig, webUrlFor, type Config } from "../config";
-import { bold, dim, int } from "../ui";
+import { bold, dim, int, safeText } from "../ui";
 
 /** Claude Code deletes old transcripts, so days this old may be incomplete on disk. */
 const SAFE_DAYS = 27;
@@ -66,7 +66,7 @@ export function chunk(days: DailyAggregate[]): DailyAggregate[][] {
 function union(days: DailyAggregate[], pick: (d: DailyAggregate) => Record<string, unknown>): string[] {
   const names = new Set<string>();
   for (const d of days) for (const k of Object.keys(pick(d))) names.add(k);
-  return [...names].sort();
+  return [...names].map(safeText).sort();
 }
 
 function preview(days: DailyAggregate[], timeZone: string): string[] {
@@ -161,7 +161,7 @@ export async function sync(input: SyncInput, out: (s?: string) => void): Promise
         body: { machineId: config.machineId, timeZone: input.timeZone, days: c },
       });
       profileUrl = res.profileUrl;
-      skipped.push(...(res.skipped ?? []));
+      for (const x of res.skipped ?? []) if (skipped.length < 5) skipped.push(x);
       skippedCount += res.skippedCount ?? 0;
     }
   } catch (e) {
@@ -179,10 +179,10 @@ export async function sync(input: SyncInput, out: (s?: string) => void): Promise
   config.lastSyncedDay = { ...config.lastSyncedDay, [base]: lastDay };
   await saveConfig(config);
   out(`Uploaded ${int(new Set(days.map((d) => d.day)).size)} days, ${days[0]!.day} to ${lastDay}.`);
-  out(`Your page: ${bold(profileUrl ?? `${webUrlFor(base)}/@${auth.handle}`)}`);
+  out(`Your page: ${bold(safeText(String(profileUrl ?? `${webUrlFor(base)}/@${auth.handle}`)))}`);
   if (skippedCount > 0) {
     out(dim(`The server skipped ${int(skippedCount)} of them. Update the CLI, and if it keeps happening, open an issue with these lines:`));
-    for (const x of skipped.slice(0, 5)) out(dim(`  ${x.day ?? "?"} ${x.source ?? "?"}: ${x.reason}`));
+    for (const x of skipped) out(dim(safeText(`  ${x.day ?? "?"} ${x.source ?? "?"}: ${x.reason}`)));
   }
   return 0;
 }

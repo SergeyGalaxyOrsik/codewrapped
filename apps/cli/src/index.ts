@@ -5,7 +5,6 @@ import {
   parseFiles,
   systemTimeZone,
   type LocalLogs,
-  type ParseWarnings,
 } from "@codewrapped/parser";
 import { BETA_SOURCES, summarize, PRICING_CHECKED_ON, SOURCE_NAMES, SOURCES, sourceLabel, type Source } from "@codewrapped/stats";
 import { site } from "@codewrapped/brand";
@@ -16,24 +15,11 @@ import { login } from "./commands/login";
 import { logout } from "./commands/logout";
 import { sync } from "./commands/sync";
 import { loadAuth, loadConfig, saveConfig, type Config } from "./config";
-import { formatSummary } from "./format";
-import { dim, int, pad, tildify } from "./ui";
+import { formatSummary, listText, warningLines } from "./format";
+import { dim, int, pad, safeText, tildify } from "./ui";
 
 const out = (s = "") => process.stdout.write(`${s}\n`);
 const err = (s = "") => process.stderr.write(`${s}\n`);
-
-function warningLine(w: Record<Source, ParseWarnings>): string | null {
-  const all = Object.values(w);
-  const bad = all.reduce((n, x) => n + x.badLines, 0);
-  const unknown = all.reduce(
-    (n, x) => n + Object.values(x.unknownEvents).reduce((a, b) => a + b, 0),
-    0,
-  );
-  const parts: string[] = [];
-  if (bad > 0) parts.push(`${int(bad)} unreadable ${bad === 1 ? "line" : "lines"}`);
-  if (unknown > 0) parts.push(`${int(unknown)} unknown ${unknown === 1 ? "event" : "events"}`);
-  return parts.length > 0 ? `Skipped ${parts.join(" and ")}.` : null;
-}
 
 type LocalData = Awaited<ReturnType<typeof parseFiles>> & {
   timeZone: string;
@@ -43,9 +29,6 @@ type LocalData = Awaited<ReturnType<typeof parseFiles>> & {
   folders: string[];
   files: Record<Source, number>;
 };
-
-/** "a, b and c". */
-const listText = (items: string[]) => items.join(", ").replace(/, ([^,]*)$/, " and $1");
 
 /** "Claude Code or Codex", for messages about every harness. */
 const ANY_HARNESS = SOURCES.map((s) => SOURCE_NAMES[s]).join(", ").replace(/, ([^,]*)$/, " or $1");
@@ -154,6 +137,7 @@ async function wrap(opts: CliOptions): Promise<number> {
         2,
       ),
     );
+    for (const line of warningLines(warnings)) err(dim(line));
     return 0;
   }
 
@@ -173,8 +157,7 @@ async function wrap(opts: CliOptions): Promise<number> {
   out();
   const seconds = ((Date.now() - started) / 1000).toFixed(1);
   out(dim(`Read ${listText(counts)} log files in ${seconds}s. Times in ${timeZone}.`));
-  const w = warningLine(warnings);
-  if (w) out(dim(w));
+  for (const line of warningLines(warnings)) out(dim(line));
   const beta = SOURCES.filter((s) => BETA_SOURCES.has(s) && summary.bySource[s].tokens + summary.bySource[s].activeMinutes > 0);
   if (beta.length > 0) {
     const names = listText(beta.map((s) => SOURCE_NAMES[s]));
@@ -202,8 +185,10 @@ async function wrap(opts: CliOptions): Promise<number> {
 async function runSync(opts: CliOptions): Promise<number> {
   if (!opts.dryRun) out(dim("codewrapped sync -- uploads daily totals, never prompts, code or paths."));
   else err(dim("codewrapped sync --dry-run -- prints what would be uploaded. Nothing is sent."));
-  const local = await readLocal(opts, opts.dryRun ? err : out);
+  const say = opts.dryRun ? err : out;
+  const local = await readLocal(opts, say);
   if (!local) return 1;
+  for (const line of warningLines(local.warnings)) say(dim(line));
   return sync(
     {
       aggregates: local.aggregates,
@@ -250,7 +235,7 @@ async function main(): Promise<number> {
 main().then(
   (code) => process.exit(code),
   (e: unknown) => {
-    err(`codewrapped stopped on an unexpected error: ${(e as Error)?.message ?? e}`);
+    err(`codewrapped stopped on an unexpected error: ${safeText(String((e as Error)?.message ?? e))}`);
     err(`Run it again. If it stops at the same place, run with ${SOURCES.map((s) => `--source ${s}`).join(" or ")} to find the log that causes it.`);
     process.exit(1);
   },

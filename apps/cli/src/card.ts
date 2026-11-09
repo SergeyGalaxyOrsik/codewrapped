@@ -40,14 +40,18 @@ export async function writeCard(summary: Summary, opts: CardFileOptions): Promis
   return path;
 }
 
-/** Opens a file with the system viewer. Failing to open is not an error. */
-export function openFile(path: string): void {
+/**
+ * Opens a file or URL with the system handler. Failing to open is not an
+ * error. On Windows it goes to rundll32 rather than `cmd /c start`, which
+ * would parse & | ^ in the target as commands.
+ */
+export function openFile(target: string): void {
   const [cmd, args] =
     process.platform === "darwin"
-      ? ["open", [path]]
+      ? ["open", [target]]
       : process.platform === "win32"
-        ? ["cmd", ["/c", "start", "", path]]
-        : ["xdg-open", [path]];
+        ? ["rundll32.exe", ["url.dll,FileProtocolHandler", target]]
+        : ["xdg-open", [target]];
   try {
     const child = spawn(cmd, args, { detached: true, stdio: "ignore" });
     child.on("error", () => {});
@@ -55,6 +59,27 @@ export function openFile(path: string): void {
   } catch {
     // No viewer available.
   }
+}
+
+/**
+ * The URL, normalized, when it is on one of the trusted sites (same scheme,
+ * host and port), else null. Only those are opened in the browser.
+ */
+export function trustedUrl(url: string, trusted: readonly string[]): string | null {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return null;
+  }
+  const origins = trusted.flatMap((t) => (URL.canParse(t) ? [new URL(t).origin] : []));
+  return (u.protocol === "https:" || u.protocol === "http:") && origins.includes(u.origin) ? u.href : null;
+}
+
+/** Opens a URL from the server in the browser when it is on a trusted site. */
+export function openUrl(url: string, trusted: readonly string[]): void {
+  const safe = trustedUrl(url, trusted);
+  if (safe) openFile(safe);
 }
 
 /** A post intent with the text filled in. The user attaches the image. */
