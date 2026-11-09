@@ -2,7 +2,12 @@ import { z } from "zod";
 import { MASK_BASE64_LENGTH, decodeMask, type DailyAggregate } from "@codewrapped/stats";
 
 const count = z.number().finite().nonnegative().max(1e13);
-const name = z.string().min(1).max(200);
+/** Keys become property names on plain objects, so none may name an inherited one such as constructor or __proto__. */
+const name = z
+  .string()
+  .min(1)
+  .max(200)
+  .refine((k) => !(k in Object.prototype), "reserved name");
 /** Keyed counts such as tools or files. Capped so one row stays small. */
 const counts = z.record(name, count).refine((r) => Object.keys(r).length <= 500, "too many keys");
 
@@ -18,7 +23,17 @@ const mask = z
     }
   }, "not a 1440 bit mask");
 
-const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((d) => !Number.isNaN(Date.parse(`${d}T00:00:00Z`)), "not a date");
+/** The earliest day a sync may hold. */
+export const FIRST_DAY = "2024-01-01";
+
+const day = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine((d) => {
+    const t = new Date(`${d}T00:00:00Z`);
+    return !Number.isNaN(t.getTime()) && t.toISOString().slice(0, 10) === d;
+  }, "not a date")
+  .refine((d) => d >= FIRST_DAY, `before ${FIRST_DAY}`);
 
 export const DailyAggregateSchema = z.object({
   day,
@@ -58,8 +73,10 @@ export const DailyAggregateSchema = z.object({
   schemaVersion: z.literal(1),
 });
 
+export const MachineId = z.string().min(8).max(64).regex(/^[A-Za-z0-9_-]+$/);
+
 export const SyncBody = z.object({
-  machineId: z.string().min(8).max(64).regex(/^[A-Za-z0-9_-]+$/),
+  machineId: MachineId,
   timeZone: z.string().min(1).max(64).refine((tz) => {
     try {
       new Intl.DateTimeFormat("en-US", { timeZone: tz });
@@ -77,14 +94,32 @@ export type SyncedDay = Omit<DailyAggregate, "source"> & { source: string };
 
 export type SkippedDay = { index: number; day: string | null; source: string | null; reason: string };
 
-/** Splits uploaded rows into valid ones and skipped ones with the first problem of each. */
-export function checkDays(days: unknown[]): { valid: SyncedDay[]; skipped: SkippedDay[] } {
-  const valid: SyncedDay[] = [];
+/**
+ * What one upload may add. `latestDay` is tomorrow in UTC, the furthest any timezone's today
+ * reaches. `sources` are the harnesses the account already holds.
+ */
+export type SyncLimits = { latestDay: string; sources: ReadonlySet<string>; maxSources: number };
+
+/**
+ * Splits uploaded rows into valid ones and skipped ones with the first problem of each.
+ * A day and source sent twice keeps the last copy, as a later sync of it would.
+ */
+export function checkDays(days: unknown[], limits: SyncLimits): { valid: SyncedDay[]; skipped: SkippedDay[] } {
+  const byKey = new Map<string, { index: number; row: SyncedDay }>();
   const skipped: SkippedDay[] = [];
+  const sources = new Set(limits.sources);
   days.forEach((raw, index) => {
     const parsed = DailyAggregateSchema.safeParse(raw);
     if (parsed.success) {
-      valid.push(parsed.data as SyncedDay);
+      const row = parsed.data as SyncedDay;
+      const skip = (reason: string) => void skipped.push({ index, day: row.day, source: row.source, reason });
+      if (row.day > limits.latestDay) return skip("day: in the future");
+      if (!sources.has(row.source) && sources.size >= limits.maxSources) return skip(`source: at most ${limits.maxSources} harnesses per account`);
+      sources.add(row.source);
+      const key = `${row.day}/${row.source}`;
+      const earlier = byKey.get(key);
+      if (earlier) skipped.push({ index: earlier.index, day: row.day, source: row.source, reason: `row: day and source sent again at ${index}` });
+      byKey.set(key, { index, row });
       return;
     }
     const r = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
@@ -96,7 +131,25 @@ export function checkDays(days: unknown[]): { valid: SyncedDay[]; skipped: Skipp
       reason: `${issue?.path.join(".") || "row"}: ${issue?.message ?? "invalid"}`,
     });
   });
-  return { valid, skipped };
+  const valid = [...byKey.values()].sort((a, b) => a.index - b.index).map((v) => v.row);
+  return { valid, skipped: skipped.sort((a, b) => a.index - b.index) };
 }
 
 export const HANDLE_RE = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/;
+
+/** Handles nobody gets: the website's own paths and names people would take for staff. */
+export const RESERVED_HANDLES: ReadonlySet<string> = new Set([
+  "about", "account", "admin", "administrator", "api", "app", "auth", "blog", "codewrapped", "dashboard",
+  "device", "docs", "help", "leaderboard", "login", "logout", "me", "mod", "moderator", "official", "privacy",
+  "root", "security", "settings", "signin", "signup", "staff", "status", "support", "system", "team", "terms",
+  "u", "user", "www",
+]);
+
+const CONTROL = /\p{Cc}+/gu;
+/** Marks that reorder text, so a name could show differently from what it spells. */
+const BIDI = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g;
+
+/** A name as shown to other people: no control characters, no direction overrides, single spaces. */
+export function cleanName(s: string): string {
+  return s.replace(BIDI, "").replace(CONTROL, " ").replace(/\s+/g, " ").trim();
+}

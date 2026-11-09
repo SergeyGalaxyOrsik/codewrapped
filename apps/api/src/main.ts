@@ -8,6 +8,7 @@ import { createAuth } from "./auth";
 import { loadConfig } from "./config";
 import { schema, type Db } from "./db";
 import { githubCreatedAt } from "./lib/github";
+import { purgeExpired } from "./lib/purge";
 
 const config = loadConfig();
 const client = postgres(config.databaseUrl, { max: 10 });
@@ -25,6 +26,11 @@ const app = createApp({
   getUserId: async (req) => (await auth.api.getSession({ headers: req.headers }))?.user.id ?? null,
   githubCreatedAt: (userId) => githubCreatedAt(db, userId),
 });
+
+const purge = () =>
+  purgeExpired(db, new Date()).catch((err: unknown) => console.error(JSON.stringify({ event: "purge_failed", message: String((err as Error)?.message).split("\n")[0] })));
+void purge();
+setInterval(purge, 60 * 60_000).unref();
 
 const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
   console.log(`codewrapped api on :${info.port}`);

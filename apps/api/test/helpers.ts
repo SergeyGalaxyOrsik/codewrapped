@@ -23,6 +23,7 @@ export async function setup(opts: { syncLimit?: { requests: number; windowMs: nu
     now: () => clock.now,
     syncLimit: opts.syncLimit,
     githubCreatedAt: opts.githubCreatedAt,
+    boardRefreshMs: 0,
   });
 
   const req = (method: string, path: string, init: { body?: unknown; user?: string; token?: string; headers?: Record<string, string> } = {}) =>
@@ -44,9 +45,11 @@ export async function setup(opts: { syncLimit?: { requests: number; windowMs: nu
     await ensureProfile(db, { id, name: githubLogin, image: null, githubLogin });
   };
 
-  /** Runs the whole device flow and returns a CLI token. */
+  let logins = 0;
+  /** Runs the whole device flow and returns a CLI token. Each login comes from its own address. */
   const login = async (userId: string, machineLabel = "laptop") => {
-    const start = (await (await req("POST", "/cli/device", { body: { machineLabel } })).json()) as {
+    const headers = { "x-forwarded-for": `10.0.${Math.floor(++logins / 250)}.${logins % 250}` };
+    const start = (await (await req("POST", "/cli/device", { body: { machineLabel }, headers })).json()) as {
       deviceCode: string;
       userCode: string;
     };

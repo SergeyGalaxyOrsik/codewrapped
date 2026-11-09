@@ -1,17 +1,19 @@
-import { and, count, eq, gt, gte, isNull, lte, max, min, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, isNull, lte, max, min, notInArray, sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
+import { secureHeaders } from "hono/secure-headers";
 import { z } from "zod";
-import { buildPublicProfile, isKnownSource, knownRows, PERIODS, todayIn, type DailyAggregate, type Period, type PublicProfile } from "@codewrapped/stats";
+import { addDays, buildPublicProfile, isKnownSource, knownRows, PERIODS, todayIn, type DailyAggregate, type Period, type PublicProfile } from "@codewrapped/stats";
 import { webOrigins } from "./config";
 import type { Db } from "./db";
 import { cliTokens, dailyStats, DEFAULT_VISIBILITY, deviceCodes, profiles, users, type Visibility } from "./db/schema";
+import { Boards, type BoardRange } from "./lib/boards";
 import { TtlCache } from "./lib/cache";
 import { randomId, randomToken, sha256, userCode } from "./lib/crypto";
 import { fail } from "./lib/errors";
 import { handleTaken } from "./lib/profiles";
-import { RateLimiter } from "./lib/ratelimit";
+import { clientIp, RateLimiter } from "./lib/ratelimit";
 import {
   BOARD_METRICS,
   BOARD_PERIODS,
@@ -23,9 +25,11 @@ import {
   type BoardMetric,
   type BoardPeriod,
   type Candidate,
+  type Ranked,
+  type ScoredDay,
 } from "./lib/leaderboard";
 import { flagDay } from "./lib/plausibility";
-import { checkDays, HANDLE_RE, SyncBody } from "./validation";
+import { checkDays, cleanName, HANDLE_RE, MachineId, RESERVED_HANDLES, SyncBody } from "./validation";
 
 export type AppDeps = {
   db: Db;
@@ -38,24 +42,47 @@ export type AppDeps = {
   /** When the user's GitHub account was created, for accounts made before that was recorded at sign-up. */
   githubCreatedAt?: (userId: string) => Promise<Date | null>;
   syncLimit?: { requests: number; windowMs: number };
+  /** How often a changed leaderboard is rebuilt at most. */
+  boardRefreshMs?: number;
 };
 
 const DEVICE_TTL_MS = 10 * 60_000;
 const DEVICE_INTERVAL_S = 5;
 const MAX_SYNC_BYTES = 1024 * 1024;
+const MAX_BODY_BYTES = 16 * 1024;
+/** Logging in again past this many connected computers disconnects the oldest. */
+const MAX_LIVE_TOKENS = 10;
+const MAX_MACHINES = 10;
+const MAX_SOURCES = 20;
+const USER_CODE_RE = /^[A-Z]{4}-\d{4}$/i;
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+const TOKEN_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 type Vars = { userId: string; tokenId: string };
 
 export function createApp(deps: AppDeps) {
   const { db } = deps;
   const now = deps.now ?? (() => new Date());
+  const today = () => now().toISOString().slice(0, 10);
   const cache = new TtlCache<PublicProfile>(5 * 60_000);
-  const boards = new TtlCache<Candidate[]>(5 * 60_000);
   /** Users GitHub was asked about lately, so a failing lookup is not repeated on every request. */
   const askedGithub = new TtlCache<true>(60 * 60_000);
   const syncLimiter = new RateLimiter(deps.syncLimit?.requests ?? 30, deps.syncLimit?.windowMs ?? 10 * 60_000);
+  const deviceStartLimiter = new RateLimiter(10, 10 * 60_000);
+  const codeTriesByUser = new RateLimiter(20, 10 * 60_000);
+  const codeTriesByIp = new RateLimiter(50, 10 * 60_000);
   const app = new Hono<{ Variables: Vars }>();
   const allowedOrigins = webOrigins(deps.webUrl);
+
+  app.use(
+    "*",
+    secureHeaders({
+      strictTransportSecurity: "max-age=63072000; includeSubDomains",
+      // Not same-origin: the website on the sibling subdomain still loads responses from here.
+      crossOriginResourcePolicy: "same-site",
+      xFrameOptions: "DENY",
+    }),
+  );
 
   app.use(
     "*",
@@ -67,8 +94,32 @@ export function createApp(deps: AppDeps) {
     }),
   );
 
+  // Browsers send Origin with every request that can change state. The CLI sends none and signs in with a Bearer token, not a cookie.
+  app.use("*", async (c, next) => {
+    const origin = c.req.header("origin");
+    if (SAFE_METHODS.has(c.req.method) || origin === undefined || allowedOrigins.includes(origin)) return next();
+    return fail(c, 403, "forbidden_origin", "This request came from another website.");
+  });
+
+  const smallBody = bodyLimit({
+    maxSize: MAX_BODY_BYTES,
+    onError: (c) => fail(c, 413, "payload_too_large", "Send at most 16 KB per request."),
+  });
+  app.use("*", (c, next) => (c.req.path === "/sync" ? next() : smallBody(c, next)));
+
+  // Query errors carry their parameters, such as private repository and file names, so only these fields are logged.
   app.onError((err, c) => {
-    console.error(err);
+    const cause = err.cause instanceof Error ? err.cause : err;
+    console.error(
+      JSON.stringify({
+        event: "request_failed",
+        method: c.req.method,
+        route: c.req.routePath,
+        name: cause.name,
+        code: (cause as { code?: unknown }).code ?? null,
+        message: cause.message.split("\n")[0]?.slice(0, 200),
+      }),
+    );
     return fail(c, 500, "internal", "Something went wrong on our side. Try again in a minute.");
   });
 
@@ -112,11 +163,20 @@ export function createApp(deps: AppDeps) {
 
   const bust = async (userId: string) => cache.bust(`${userId}:`);
 
+  const ipOf = (c: Context) => clientIp(c.req.raw, (c.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined)?.incoming?.socket?.remoteAddress);
+
+  const tooMany = (c: Context, wait: number, message: string) => {
+    c.header("Retry-After", String(wait));
+    return fail(c, 429, "rate_limited", `${message} Try again in ${wait} seconds.`);
+  };
+
   // ---- device login ----
 
   app.post("/cli/device", async (c) => {
+    const wait = deviceStartLimiter.take(ipOf(c), now().getTime());
+    if (wait > 0) return tooMany(c, wait, "Too many logins from this network.");
     const body = z
-      .object({ machineLabel: z.string().min(1).max(100), machineId: z.string().max(64).optional() })
+      .object({ machineLabel: z.string().transform(cleanName).pipe(z.string().min(1).max(100)), machineId: MachineId.optional() })
       .safeParse(await c.req.json().catch(() => null));
     if (!body.success) return fail(c, 400, "invalid_request", "Send machineLabel, the name of this computer.");
     const deviceCode = randomToken("dc_");
@@ -175,11 +235,22 @@ export function createApp(deps: AppDeps) {
       machineLabel: dc.machineLabel,
       machineId: dc.machineId,
     });
+    const newest = db
+      .select({ id: cliTokens.id })
+      .from(cliTokens)
+      .where(and(eq(cliTokens.userId, userId), isNull(cliTokens.revokedAt)))
+      .orderBy(desc(cliTokens.createdAt), desc(cliTokens.id))
+      .limit(MAX_LIVE_TOKENS);
+    await db
+      .update(cliTokens)
+      .set({ revokedAt: now() })
+      .where(and(eq(cliTokens.userId, userId), isNull(cliTokens.revokedAt), notInArray(cliTokens.id, newest)));
     const [p] = await db.select({ handle: profiles.handle }).from(profiles).where(eq(profiles.userId, userId));
     return c.json({ token, handle: p?.handle ?? null });
   });
 
   const pendingDevice = async (code: string) => {
+    if (!USER_CODE_RE.test(code)) return null;
     const [dc] = await db
       .select()
       .from(deviceCodes)
@@ -188,20 +259,32 @@ export function createApp(deps: AppDeps) {
     return dc ?? null;
   };
 
-  app.get("/cli/device/:code", requireSession, async (c) => {
+  const notPending = (c: Context) => fail(c, 404, "not_found", 'This code is not valid or expired. Run "npx codewrapped login" again.');
+
+  /** Codes are short enough to guess, so each account and each address gets few tries. */
+  const limitCodeTries = async (c: Context<{ Variables: Vars }>, next: () => Promise<void>) => {
+    const at = now().getTime();
+    const wait = Math.max(codeTriesByUser.take(c.get("userId"), at), codeTriesByIp.take(ipOf(c), at));
+    if (wait > 0) return tooMany(c, wait, "Too many codes tried.");
+    await next();
+  };
+
+  app.get("/cli/device/:code", requireSession, limitCodeTries, async (c) => {
     const dc = await pendingDevice(c.req.param("code") ?? "");
-    if (!dc) return fail(c, 404, "not_found", "This code is not valid or expired. Run \"npx codewrapped login\" again.");
+    if (!dc) return notPending(c);
     return c.json({ userCode: dc.userCode, machineLabel: dc.machineLabel, createdAt: dc.createdAt.toISOString() });
   });
 
   for (const action of ["approve", "deny"] as const) {
-    app.post(`/cli/device/:code/${action}`, requireSession, async (c) => {
+    app.post(`/cli/device/:code/${action}`, requireSession, limitCodeTries, async (c) => {
       const dc = await pendingDevice(c.req.param("code") ?? "");
-      if (!dc) return fail(c, 404, "not_found", "This code is not valid or expired. Run \"npx codewrapped login\" again.");
-      await db
+      if (!dc) return notPending(c);
+      const decided = await db
         .update(deviceCodes)
         .set(action === "approve" ? { status: "approved", userId: c.get("userId") } : { status: "denied" })
-        .where(eq(deviceCodes.deviceCodeHash, dc.deviceCodeHash));
+        .where(and(eq(deviceCodes.deviceCodeHash, dc.deviceCodeHash), eq(deviceCodes.status, "pending"), gt(deviceCodes.expiresAt, now())))
+        .returning({ status: deviceCodes.status });
+      if (decided.length === 0) return notPending(c);
       return c.json({ ok: true });
     });
   }
@@ -222,20 +305,32 @@ export function createApp(deps: AppDeps) {
     }),
     requireToken,
     async (c) => {
-      const wait = syncLimiter.take(c.get("tokenId"), now().getTime());
-      if (wait > 0) {
-        c.header("Retry-After", String(wait));
-        return fail(c, 429, "rate_limited", `Too many syncs. Try again in ${wait} seconds.`);
-      }
+      const wait = syncLimiter.take(c.get("userId"), now().getTime());
+      if (wait > 0) return tooMany(c, wait, "Too many syncs.");
       const parsed = SyncBody.safeParse(await c.req.json().catch(() => null));
       if (!parsed.success) {
         const issue = parsed.error.issues[0];
         return fail(c, 400, "invalid_payload", `The upload was rejected at ${issue?.path.join(".") || "body"}: ${issue?.message}. Update the CLI and try again.`);
       }
       const { machineId, timeZone } = parsed.data;
-      // One bad or unknown row never costs the rest of the upload.
-      const { valid: days, skipped } = checkDays(parsed.data.days);
       const userId = c.get("userId");
+      const [stored] = await db
+        .select({
+          machines: sql<string[]>`coalesce(array_agg(distinct ${dailyStats.machineId}), '{}')`,
+          sources: sql<string[]>`coalesce(array_agg(distinct ${dailyStats.source}), '{}')`,
+        })
+        .from(dailyStats)
+        .where(eq(dailyStats.userId, userId));
+      const machines = new Set(stored?.machines ?? []);
+      if (!machines.has(machineId) && machines.size >= MAX_MACHINES) {
+        return fail(c, 403, "too_many_machines", `This account already has data from ${MAX_MACHINES} computers. Delete your synced data in the settings on the website to start over.`);
+      }
+      // One bad or unknown row never costs the rest of the upload.
+      const { valid: days, skipped } = checkDays(parsed.data.days, {
+        latestDay: addDays(today(), 1),
+        sources: new Set(stored?.sources ?? []),
+        maxSources: MAX_SOURCES,
+      });
       if (days.length > 0) {
         // One row per user, machine, source and day. Re-sending a day replaces it.
         await db
@@ -264,7 +359,7 @@ export function createApp(deps: AppDeps) {
         .where(eq(profiles.userId, userId))
         .returning({ handle: profiles.handle });
       await bust(userId);
-      boards.bust("");
+      boards.markStale();
       return c.json({
         received: days.length,
         skipped: skipped.slice(0, 20),
@@ -276,18 +371,16 @@ export function createApp(deps: AppDeps) {
 
   // ---- leaderboards ----
 
-  const today = () => now().toISOString().slice(0, 10);
-
   /** Everyone with synced days in the range, scored. Opt-in and eligibility are decided per board. */
-  const candidates = async (period: BoardPeriod): Promise<Candidate[]> => {
-    const { start, end } = boardRange(period, today());
-    const key = `${start}:${end}`;
-    const hit = boards.get(key);
-    if (hit) return hit;
+  const buildBoard = async (_period: BoardPeriod, { start, end }: BoardRange): Promise<Candidate[]> => {
+    // Only the fields scoring reads: the whole row is many times larger.
     const rows = await db
       .select({
         userId: dailyStats.userId,
-        data: dailyStats.data,
+        day: dailyStats.day,
+        source: dailyStats.source,
+        activeMask: sql<string>`${dailyStats.data}->>'activeMask'`,
+        tokens: sql<DailyAggregate["tokens"]>`${dailyStats.data}->'tokens'`,
         flag: dailyStats.flag,
         handle: profiles.handle,
         displayName: profiles.displayName,
@@ -301,16 +394,16 @@ export function createApp(deps: AppDeps) {
       .innerJoin(profiles, eq(profiles.userId, dailyStats.userId))
       .innerJoin(users, eq(users.id, dailyStats.userId))
       .where(and(gte(dailyStats.day, start), lte(dailyStats.day, end)));
-    const byUser = new Map<string, { first: (typeof rows)[number]; days: (typeof rows)[number]["data"][]; flags: Array<{ day: string; flag: string }> }>();
+    const byUser = new Map<string, { first: (typeof rows)[number]; days: ScoredDay[]; flags: Array<{ day: string; flag: string }> }>();
     // Harnesses the registry does not know yet never count toward a board.
     for (const r of rows) {
-      if (!isKnownSource(r.data.source)) continue;
+      if (!isKnownSource(r.source)) continue;
       const u = byUser.get(r.userId) ?? { first: r, days: [], flags: [] };
-      u.days.push(r.data);
-      if (r.flag !== null) u.flags.push({ day: r.data.day, flag: r.flag });
+      u.days.push({ day: r.day, activeMask: r.activeMask, tokens: r.tokens });
+      if (r.flag !== null) u.flags.push({ day: r.day, flag: r.flag });
       byUser.set(r.userId, u);
     }
-    const list: Candidate[] = [...byUser.values()].map(({ first, days, flags }) => {
+    return [...byUser.values()].map(({ first, days, flags }) => {
       const hold = first.trusted ? null : holdFor(first.githubCreatedAt, flags, now());
       return {
         userId: first.userId,
@@ -324,9 +417,14 @@ export function createApp(deps: AppDeps) {
         scores: score(days),
       };
     });
-    boards.set(key, list);
-    return list;
   };
+
+  const boards = new Boards({
+    build: buildBoard,
+    range: (period) => boardRange(period, today()),
+    refreshMs: deps.boardRefreshMs ?? 30_000,
+    maxAgeMs: 5 * 60_000,
+  });
 
   const boardQuery = (c: Context<{ Variables: Vars }>) => {
     const period = (c.req.query("period") ?? "week") as BoardPeriod;
@@ -338,7 +436,7 @@ export function createApp(deps: AppDeps) {
   app.get("/leaderboard", async (c) => {
     const q = boardQuery(c);
     if (!q) return fail(c, 400, "invalid_board", `Use period ${BOARD_PERIODS.join(" or ")} and metric ${BOARD_METRICS.join(", ")}.`);
-    const ranked = rank((await candidates(q.period)).filter((x) => x.optedIn && x.eligible), q.metric);
+    const ranked = rank((await boards.get(q.period)).filter((x) => x.optedIn && x.eligible), q.metric);
     c.header("Cache-Control", "public, max-age=60");
     return c.json({
       ...q,
@@ -369,17 +467,17 @@ export function createApp(deps: AppDeps) {
       .update(users)
       .set({ githubCreatedAt: at })
       .where(and(eq(users.id, userId), isNull(users.githubCreatedAt)));
-    boards.bust("");
+    boards.markStale();
     return true;
   };
 
   app.get("/leaderboard/me", requireSession, async (c) => {
     const q = boardQuery(c);
     if (!q) return fail(c, 400, "invalid_board", `Use period ${BOARD_PERIODS.join(" or ")} and metric ${BOARD_METRICS.join(", ")}.`);
-    let all = await candidates(q.period);
+    let all = await boards.get(q.period);
     let me = all.find((x) => x.userId === c.get("userId"));
     if (me?.hold?.reason === "account_age_unknown" && (await fillGithubAge(me.userId))) {
-      all = await candidates(q.period);
+      all = await boards.fresh(q.period);
       me = all.find((x) => x.userId === c.get("userId"));
     }
     const [p] = await db.select({ optedIn: profiles.leaderboard }).from(profiles).where(eq(profiles.userId, c.get("userId")));
@@ -395,9 +493,19 @@ export function createApp(deps: AppDeps) {
     });
   });
 
-  /** "Top N%" this month by hours, among all eligible active users, opted in or not. */
-  const standing = async (userId: string): Promise<PublicProfile["standing"]> => {
-    const ranked = rank((await candidates("month")).filter((x) => x.eligible), "hours");
+  const monthRanks = new WeakMap<Candidate[], Ranked[]>();
+  /**
+   * "Top N%" this month by hours, among all eligible active users, opted in or not.
+   * Read from the last built board: a profile view never builds one.
+   */
+  const standing = (userId: string): PublicProfile["standing"] => {
+    const board = boards.peek("month");
+    if (!board) return null;
+    let ranked = monthRanks.get(board);
+    if (!ranked) {
+      ranked = rank(board.filter((x) => x.eligible), "hours");
+      monthRanks.set(board, ranked);
+    }
     const pct = percentile(ranked, userId);
     return pct === null ? null : { percentile: pct, period: "month" };
   };
@@ -408,7 +516,7 @@ export function createApp(deps: AppDeps) {
     const period = (c.req.query("period") ?? "30d") as Period;
     if (!PERIODS.includes(period)) return fail(c, 400, "invalid_period", `Use one of ${PERIODS.join(", ")}.`);
     const handle = c.req.param("handle").replace(/^@/, "").toLowerCase();
-    const [p] = await db.select().from(profiles).where(sql`lower(${profiles.handle}) = ${handle}`).limit(1);
+    const [p] = HANDLE_RE.test(handle) ? await db.select().from(profiles).where(sql`lower(${profiles.handle}) = ${handle}`).limit(1) : [];
     if (!p) return fail(c, 404, "not_found", "No profile with this handle.");
     const key = `${p.userId}:${period}`;
     let body = cache.get(key);
@@ -421,11 +529,10 @@ export function createApp(deps: AppDeps) {
         period,
         todayIn(p.timeZone, now()),
       );
-      body.standing = await standing(p.userId);
       cache.set(key, body);
     }
     c.header("Cache-Control", "public, max-age=60");
-    return c.json(body);
+    return c.json({ ...body, standing: standing(p.userId) });
   });
 
   // ---- signed-in user ----
@@ -466,7 +573,16 @@ export function createApp(deps: AppDeps) {
 
   me.patch("/profile", async (c) => {
     const body = z
-      .object({ handle: z.string().optional(), displayName: z.string().max(80).nullable().optional() })
+      .object({
+        handle: z.string().max(100).optional(),
+        displayName: z
+          .string()
+          .transform(cleanName)
+          .pipe(z.string().max(80))
+          .transform((s) => s || null)
+          .nullable()
+          .optional(),
+      })
       .safeParse(await c.req.json().catch(() => null));
     if (!body.success) return fail(c, 400, "invalid_request", "Send handle or displayName.");
     const userId = c.get("userId");
@@ -478,12 +594,14 @@ export function createApp(deps: AppDeps) {
     if (handle && handle !== p.handle.toLowerCase()) {
       if (p.handleChangedAt) return fail(c, 409, "handle_locked", "You can change your handle once, and you already did.");
       if (!HANDLE_RE.test(handle)) return fail(c, 400, "invalid_handle", "Use 1 to 39 lowercase letters, digits or dashes, not starting or ending with a dash.");
+      if (RESERVED_HANDLES.has(handle)) return fail(c, 409, "handle_reserved", "This handle is reserved. Pick another.");
       if (await handleTaken(db, handle)) return fail(c, 409, "handle_taken", "This handle is taken. Pick another.");
       set.handle = handle;
       set.handleChangedAt = now();
     }
     await db.update(profiles).set(set).where(eq(profiles.userId, userId));
     await bust(userId);
+    boards.markStale();
     return c.json({ ok: true, handle: set.handle ?? p.handle });
   });
 
@@ -533,7 +651,7 @@ export function createApp(deps: AppDeps) {
       .set(set)
       .where(eq(profiles.userId, c.get("userId")))
       .returning({ leaderboard: profiles.leaderboard, xHandle: profiles.xHandle });
-    boards.bust("");
+    boards.markStale();
     await bust(c.get("userId"));
     return c.json(p ?? { leaderboard: false, xHandle: null });
   });
@@ -553,6 +671,7 @@ export function createApp(deps: AppDeps) {
   });
 
   me.delete("/tokens/:id", async (c) => {
+    if (!TOKEN_ID_RE.test(c.req.param("id"))) return fail(c, 404, "not_found", "No connected computer with this id.");
     const revoked = await db
       .update(cliTokens)
       .set({ revokedAt: now() })
@@ -566,6 +685,7 @@ export function createApp(deps: AppDeps) {
     const userId = c.get("userId");
     const deleted = await db.delete(dailyStats).where(eq(dailyStats.userId, userId)).returning({ day: dailyStats.day });
     await bust(userId);
+    boards.markStale();
     return c.json({ deletedDays: deleted.length });
   });
 
@@ -574,6 +694,7 @@ export function createApp(deps: AppDeps) {
     // Profiles, tokens, stats, sessions and accounts go with the user (ON DELETE CASCADE).
     await db.delete(users).where(eq(users.id, userId));
     await bust(userId);
+    boards.markStale();
     return c.body(null, 204);
   });
 

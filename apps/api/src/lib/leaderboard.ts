@@ -24,8 +24,11 @@ export function boardRange(period: BoardPeriod, today: string): { start: string;
 
 export type Scores = { minutes: number; streak: number; tokens: number };
 
+/** The parts of a synced day that scoring reads. */
+export type ScoredDay = Pick<DailyAggregate, "day" | "activeMask" | "tokens">;
+
 /** Wall-clock minutes (interactive sessions, ORed across machines), longest streak, headline tokens. */
-export function score(rows: DailyAggregate[]): Scores {
+export function score(rows: ScoredDay[]): Scores {
   const masks = new Map<string, MinuteMask>();
   let tokens = 0;
   for (const r of rows) {
