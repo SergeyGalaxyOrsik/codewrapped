@@ -1,4 +1,4 @@
-import { and, count, eq, gt, gte, isNull, lte, max, min, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, isNull, lte, max, min, notInArray, sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
@@ -12,7 +12,7 @@ import { TtlCache } from "./lib/cache";
 import { randomId, randomToken, sha256, userCode } from "./lib/crypto";
 import { fail } from "./lib/errors";
 import { handleTaken } from "./lib/profiles";
-import { RateLimiter } from "./lib/ratelimit";
+import { clientIp, RateLimiter } from "./lib/ratelimit";
 import {
   BOARD_METRICS,
   BOARD_PERIODS,
@@ -48,6 +48,10 @@ export type AppDeps = {
 const DEVICE_TTL_MS = 10 * 60_000;
 const DEVICE_INTERVAL_S = 5;
 const MAX_SYNC_BYTES = 1024 * 1024;
+/** Logging in again past this many connected computers disconnects the oldest. */
+const MAX_LIVE_TOKENS = 10;
+const MAX_MACHINES = 10;
+const MAX_SOURCES = 20;
 
 type Vars = { userId: string; tokenId: string };
 
@@ -58,6 +62,7 @@ export function createApp(deps: AppDeps) {
   /** Users GitHub was asked about lately, so a failing lookup is not repeated on every request. */
   const askedGithub = new TtlCache<true>(60 * 60_000);
   const syncLimiter = new RateLimiter(deps.syncLimit?.requests ?? 30, deps.syncLimit?.windowMs ?? 10 * 60_000);
+  const deviceStartLimiter = new RateLimiter(10, 10 * 60_000);
   const app = new Hono<{ Variables: Vars }>();
   const allowedOrigins = webOrigins(deps.webUrl);
 
@@ -116,9 +121,18 @@ export function createApp(deps: AppDeps) {
 
   const bust = async (userId: string) => cache.bust(`${userId}:`);
 
+  const ipOf = (c: Context) => clientIp(c.req.raw, (c.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined)?.incoming?.socket?.remoteAddress);
+
+  const tooMany = (c: Context, wait: number, message: string) => {
+    c.header("Retry-After", String(wait));
+    return fail(c, 429, "rate_limited", `${message} Try again in ${wait} seconds.`);
+  };
+
   // ---- device login ----
 
   app.post("/cli/device", async (c) => {
+    const wait = deviceStartLimiter.take(ipOf(c), now().getTime());
+    if (wait > 0) return tooMany(c, wait, "Too many logins from this network.");
     const body = z
       .object({ machineLabel: z.string().min(1).max(100), machineId: z.string().max(64).optional() })
       .safeParse(await c.req.json().catch(() => null));
@@ -179,6 +193,16 @@ export function createApp(deps: AppDeps) {
       machineLabel: dc.machineLabel,
       machineId: dc.machineId,
     });
+    const newest = db
+      .select({ id: cliTokens.id })
+      .from(cliTokens)
+      .where(and(eq(cliTokens.userId, userId), isNull(cliTokens.revokedAt)))
+      .orderBy(desc(cliTokens.createdAt), desc(cliTokens.id))
+      .limit(MAX_LIVE_TOKENS);
+    await db
+      .update(cliTokens)
+      .set({ revokedAt: now() })
+      .where(and(eq(cliTokens.userId, userId), isNull(cliTokens.revokedAt), notInArray(cliTokens.id, newest)));
     const [p] = await db.select({ handle: profiles.handle }).from(profiles).where(eq(profiles.userId, userId));
     return c.json({ token, handle: p?.handle ?? null });
   });
@@ -226,20 +250,28 @@ export function createApp(deps: AppDeps) {
     }),
     requireToken,
     async (c) => {
-      const wait = syncLimiter.take(c.get("tokenId"), now().getTime());
-      if (wait > 0) {
-        c.header("Retry-After", String(wait));
-        return fail(c, 429, "rate_limited", `Too many syncs. Try again in ${wait} seconds.`);
-      }
+      const wait = syncLimiter.take(c.get("userId"), now().getTime());
+      if (wait > 0) return tooMany(c, wait, "Too many syncs.");
       const parsed = SyncBody.safeParse(await c.req.json().catch(() => null));
       if (!parsed.success) {
         const issue = parsed.error.issues[0];
         return fail(c, 400, "invalid_payload", `The upload was rejected at ${issue?.path.join(".") || "body"}: ${issue?.message}. Update the CLI and try again.`);
       }
       const { machineId, timeZone } = parsed.data;
-      // One bad or unknown row never costs the rest of the upload.
-      const { valid: days, skipped } = checkDays(parsed.data.days);
       const userId = c.get("userId");
+      const [stored] = await db
+        .select({
+          machines: sql<string[]>`coalesce(array_agg(distinct ${dailyStats.machineId}), '{}')`,
+          sources: sql<string[]>`coalesce(array_agg(distinct ${dailyStats.source}), '{}')`,
+        })
+        .from(dailyStats)
+        .where(eq(dailyStats.userId, userId));
+      const machines = new Set(stored?.machines ?? []);
+      if (!machines.has(machineId) && machines.size >= MAX_MACHINES) {
+        return fail(c, 403, "too_many_machines", `This account already has data from ${MAX_MACHINES} computers. Delete your synced data in the settings on the website to start over.`);
+      }
+      // One bad or unknown row never costs the rest of the upload.
+      const { valid: days, skipped } = checkDays(parsed.data.days, { sources: new Set(stored?.sources ?? []), maxSources: MAX_SOURCES });
       if (days.length > 0) {
         // One row per user, machine, source and day. Re-sending a day replaces it.
         await db

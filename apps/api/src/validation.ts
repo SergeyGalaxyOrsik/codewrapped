@@ -77,14 +77,24 @@ export type SyncedDay = Omit<DailyAggregate, "source"> & { source: string };
 
 export type SkippedDay = { index: number; day: string | null; source: string | null; reason: string };
 
+/** What an account already holds, which bounds what one upload may add. */
+export type SyncLimits = { sources: ReadonlySet<string>; maxSources: number };
+
 /** Splits uploaded rows into valid ones and skipped ones with the first problem of each. */
-export function checkDays(days: unknown[]): { valid: SyncedDay[]; skipped: SkippedDay[] } {
+export function checkDays(days: unknown[], limits: SyncLimits): { valid: SyncedDay[]; skipped: SkippedDay[] } {
   const valid: SyncedDay[] = [];
   const skipped: SkippedDay[] = [];
+  const sources = new Set(limits.sources);
   days.forEach((raw, index) => {
     const parsed = DailyAggregateSchema.safeParse(raw);
     if (parsed.success) {
-      valid.push(parsed.data as SyncedDay);
+      const row = parsed.data as SyncedDay;
+      if (!sources.has(row.source) && sources.size >= limits.maxSources) {
+        skipped.push({ index, day: row.day, source: row.source, reason: `source: at most ${limits.maxSources} harnesses per account` });
+        return;
+      }
+      sources.add(row.source);
+      valid.push(row);
       return;
     }
     const r = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};

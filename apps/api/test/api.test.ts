@@ -138,15 +138,17 @@ describe("sync", () => {
     expect(Object.keys(p.summary.bySource)).toEqual([...SOURCES]);
   });
 
-  it("limits requests per token", async () => {
+  it("limits requests per account, however many tokens it has", async () => {
     const t = await setup({ syncLimit: { requests: 2, windowMs: 60_000 } });
     await t.createUser("u1", "ada");
-    const token = await t.login("u1");
-    expect((await t.sync(token, [])).status).toBe(200);
-    expect((await t.sync(token, [])).status).toBe(200);
-    const limited = await t.sync(token, []);
+    await t.createUser("u2", "bob");
+    const [a, b] = [await t.login("u1"), await t.login("u1")];
+    expect((await t.sync(a, [])).status).toBe(200);
+    expect((await t.sync(b, [])).status).toBe(200);
+    const limited = await t.sync(await t.login("u1"), []);
     expect(limited.status).toBe(429);
     expect(Number(limited.headers.get("retry-after"))).toBeGreaterThan(0);
+    expect((await t.sync(await t.login("u2"), [])).status).toBe(200);
   });
 });
 
