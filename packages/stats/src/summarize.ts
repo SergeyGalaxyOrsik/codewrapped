@@ -1,5 +1,5 @@
 import { pickArchetype, type Archetype } from "./archetype";
-import { addCounts, addModels, addRepos, mergeAggregates } from "./merge";
+import { addCounts, addModels, addRepos, dict, mergeAggregates } from "./merge";
 import { addDays, daysBetween, periodStart, weekdayOf } from "./days";
 import { countMinutes, decodeMask, emptyMask, hoursOf, orInto, type MinuteMask } from "./mask";
 import { emptyToolCategories, rowToolCategories, toolCategory, type ToolCategory } from "./tools";
@@ -24,6 +24,10 @@ export type SummaryOptions = {
   source?: SourceFilter;
   hideFiles?: boolean;
   hideRepos?: boolean;
+  /** Leaves tool use out of the archetype. */
+  hideTools?: boolean;
+  /** Leaves the time of day and week out of the archetype. */
+  hideTimes?: boolean;
   /** Count automated runs (claude -p, Agent SDK, codex exec) in time, sessions and archetype. */
   includeAutomated?: boolean;
 };
@@ -169,11 +173,11 @@ export function summarize(rows: readonly DailyAggregate[], opts: SummaryOptions)
   const inRange = all.filter((r) => r.day >= start && r.day <= end);
 
   const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, headline: 0 };
-  const models: Record<string, ModelUsage> = {};
-  const tools: Record<string, number> = {};
+  const models = dict<ModelUsage>();
+  const tools = dict<number>();
   const categories = emptyToolCategories();
-  const files: Record<string, number> = {};
-  const repos: Record<string, RepoUsage> = {};
+  const files = dict<number>();
+  const repos = dict<RepoUsage>();
   const hours = new Array<number>(24).fill(0);
   const weekdays = new Array<number>(7).fill(0);
   const heatmap = Array.from({ length: 7 }, () => new Array<number>(24).fill(0));
@@ -315,7 +319,7 @@ export function summarize(rows: readonly DailyAggregate[], opts: SummaryOptions)
       activeDays: uniqueActiveDays,
       periodDays: days,
     },
-    { hideFiles: opts.hideFiles },
+    { hideFiles: opts.hideFiles, hideTools: opts.hideTools, hideTimes: opts.hideTimes },
   );
 
   return {

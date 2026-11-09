@@ -2,6 +2,16 @@ import { EMPTY_MASK, unionMasks } from "./mask";
 import { rowToolCategories } from "./tools";
 import type { AutomatedActivity, DailyAggregate, ModelUsage, RepoUsage, Source } from "./types";
 
+/**
+ * An empty map from tool, file, model or repository name. It has no
+ * prototype, so a name like "__proto__" or "constructor" is an ordinary key,
+ * and it serializes like any other object. addCounts, addModels and addRepos
+ * write by name, so their target must come from here.
+ */
+export function dict<T>(): Record<string, T> {
+  return Object.create(null) as Record<string, T>;
+}
+
 export function emptyAutomated(): AutomatedActivity {
   return {
     sessions: 0,
@@ -10,7 +20,7 @@ export function emptyAutomated(): AutomatedActivity {
     agentMinutes: 0,
     longestSessionMinutes: 0,
     peakSessionsAll: 0,
-    repoMinutes: {},
+    repoMinutes: dict(),
   };
 }
 
@@ -25,10 +35,10 @@ export function emptyAggregate(day: string, source: Source): DailyAggregate {
     peakSessions: 0,
     longestSessionMinutes: 0,
     tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    models: {},
-    tools: {},
-    files: {},
-    repos: {},
+    models: dict(),
+    tools: dict(),
+    files: dict(),
+    repos: dict(),
     automated: emptyAutomated(),
     schemaVersion: 1,
   };

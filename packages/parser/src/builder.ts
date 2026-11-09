@@ -1,4 +1,5 @@
 import {
+  dict,
   emptyAggregate,
   emptyMask,
   encodeMask,
@@ -68,7 +69,7 @@ export class DayBuilder {
   addTool(ms: number, name: string, category: ToolCategory): void {
     const b = this.at(ms);
     b.tools[name] = (b.tools[name] ?? 0) + 1;
-    const c = (b.toolCategories ??= {});
+    const c = (b.toolCategories ??= dict());
     c[category] = (c[category] ?? 0) + 1;
   }
 

@@ -105,7 +105,11 @@ export class Aggregator {
       m.active ||= s.active;
     }
     // A subagent's prompts are written by the parent agent, not a person.
-    for (const [id, s] of this.sessions) if (s.parent === null) mergedOf(id).prompts.push(...s.prompts);
+    for (const [id, s] of this.sessions) {
+      if (s.parent !== null) continue;
+      const prompts = mergedOf(id).prompts;
+      for (const t of s.prompts) prompts.push(t);
+    }
     for (const m of merged.values()) this.out.addSession(m);
     return this.out.result();
   }

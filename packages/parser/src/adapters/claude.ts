@@ -46,12 +46,12 @@ const KNOWN_TYPES = new Set([
 ]);
 
 /** Tools that edit a file, and the input field that holds its path. */
-const EDIT_TOOLS: Record<string, string[]> = {
-  Edit: ["file_path"],
-  MultiEdit: ["file_path"],
-  Write: ["file_path"],
-  NotebookEdit: ["notebook_path", "file_path"],
-};
+const EDIT_TOOLS = new Map<string, string[]>([
+  ["Edit", ["file_path"]],
+  ["MultiEdit", ["file_path"]],
+  ["Write", ["file_path"]],
+  ["NotebookEdit", ["notebook_path", "file_path"]],
+]);
 
 type Obj = Record<string, unknown>;
 const obj = (v: unknown): Obj | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : null);
@@ -182,7 +182,7 @@ async function parse(files: readonly string[], emit: Emit, warnings: ParseWarnin
       // A Bash call that runs grep or rg is a search. Only the first program is read.
       const category = name === "Bash" ? shellCategory(str(input?.command)) : toolCategory(name);
       emit({ type: "tool", session, t, name, category });
-      const pathFields = EDIT_TOOLS[name];
+      const pathFields = EDIT_TOOLS.get(name);
       if (pathFields && input) {
         const path = pathFields.map((f) => str(input[f])).find(Boolean);
         if (path) emit({ type: "edit", session, t, file: basename(path) });

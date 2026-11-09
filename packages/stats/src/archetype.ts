@@ -35,7 +35,14 @@ export type Archetype = {
   sentence: string;
 };
 
-export type ArchetypeOptions = { hideFiles?: boolean };
+export type ArchetypeOptions = {
+  /** Say "a single file" instead of the file name. */
+  hideFiles?: boolean;
+  /** Skip rules about tool calls. */
+  hideTools?: boolean;
+  /** Skip rules about the time of day or week. */
+  hideTimes?: boolean;
+};
 
 /** Tunable thresholds. Rules below a minimum sample size are skipped. */
 export const ARCHETYPE_THRESHOLDS = {
@@ -64,6 +71,8 @@ export function formatDuration(minutes: number): string {
 type Rule = {
   id: ArchetypeId;
   name: string;
+  /** What the sentence tells about. The rule is skipped when the owner hides it. */
+  reveals?: "tools" | "times";
   /** Returns the sentence when the rule matches, or null. */
   match: (m: ArchetypeMetrics, o: ArchetypeOptions) => string | null;
 };
@@ -75,6 +84,7 @@ export const ARCHETYPE_RULES: readonly Rule[] = [
   {
     id: "night-shift",
     name: "Night shift",
+    reveals: "times",
     match: (m) => {
       if (m.activeMinutes < T.minActiveMinutes) return null;
       const share = m.nightMinutes / m.activeMinutes;
@@ -84,6 +94,7 @@ export const ARCHETYPE_RULES: readonly Rule[] = [
   {
     id: "shell-first",
     name: "Shell first",
+    reveals: "tools",
     match: (m) => {
       if (m.toolCalls < T.minToolCalls) return null;
       const share = m.shellCalls / m.toolCalls;
@@ -93,6 +104,7 @@ export const ARCHETYPE_RULES: readonly Rule[] = [
   {
     id: "reader",
     name: "Reader",
+    reveals: "tools",
     match: (m) => {
       if (m.toolCalls < T.minToolCalls || m.readCalls === 0) return null;
       if (m.editCalls === 0) return `Your agents read or searched ${m.readCalls} times and edited nothing.`;
@@ -124,6 +136,7 @@ export const ARCHETYPE_RULES: readonly Rule[] = [
   {
     id: "weekend-builder",
     name: "Weekend builder",
+    reveals: "times",
     match: (m) => {
       if (m.activeMinutes < T.minActiveMinutes) return null;
       const share = m.weekendMinutes / m.activeMinutes;
@@ -151,6 +164,7 @@ export const ARCHETYPE_RULES: readonly Rule[] = [
 
 export function pickArchetype(m: ArchetypeMetrics, o: ArchetypeOptions = {}): Archetype {
   for (const rule of ARCHETYPE_RULES) {
+    if ((rule.reveals === "tools" && o.hideTools) || (rule.reveals === "times" && o.hideTimes)) continue;
     const sentence = rule.match(m, o);
     if (sentence) return { id: rule.id, name: rule.name, sentence };
   }
