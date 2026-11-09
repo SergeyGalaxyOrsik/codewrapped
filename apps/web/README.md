@@ -5,10 +5,11 @@ Next.js (App Router) and Tailwind. Pages:
 | Path | What it is |
 |---|---|
 | `/` | Landing. The hero card is `NEXT_PUBLIC_HERO_HANDLE`'s live card, or a labelled example. |
-| `/@handle`, `/@handle/7d` | Public profile. Rewritten to `/u/[handle]/[period]` because an `@` folder means a parallel route in the App Router. Rendered on first request and cached for 60 seconds (ISR). |
+| `/@handle`, `/@handle/7d` | Public profile. Rewritten to `/u/[handle]/[period]` because an `@` folder means a parallel route in the App Router. Rendered on first request and cached for 60 seconds (ISR). `expireTime` in `next.config.ts` caps how long a stale copy can be served, so the periods of one profile never drift far apart. |
+| `/leaderboard`, `/leaderboard/month/tokens` | Weekly and monthly boards, cached for 60 seconds (ISR). Your own rank above the table is fetched in the browser. |
 | `/settings` | Visibility toggles, connected computers, delete data, delete account. Client-side, calls the API with the session cookie. |
 | `/device?code=ABCD-1234` | Approves a CLI login. |
-| `/api/og/[handle]?period=30d` | The card as a PNG for link previews, rendered with `next/og` from `packages/card`. |
+| `/api/og/[handle]?period=30d` | The card as a PNG for link previews, rendered with `next/og` from `packages/card`. Any other query string redirects (308) to that one URL, so the CDN keeps one copy per card. |
 
 Colors, fonts and the mark come from `packages/brand`. `pnpm prepare-brand` copies them into `public/fonts`, `app/brand.css` and `app/icon.svg`; it runs before `dev` and `build`, and those files are not committed.
 

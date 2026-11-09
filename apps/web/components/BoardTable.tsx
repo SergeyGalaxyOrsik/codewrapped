@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Board } from "@/lib/api";
 import { formatBoardValue } from "@/lib/board";
+import { plainText } from "@/lib/text";
 
 /** Rank, person and value. Avatars come from GitHub. */
 export function BoardTable({ board, limit }: { board: Board; limit?: number }) {
@@ -17,7 +18,7 @@ export function BoardTable({ board, limit }: { board: Board; limit?: number }) {
             <span className="size-7 shrink-0 rounded-full border border-border bg-surface" />
           )}
           <Link href={`/@${e.handle}`} className="min-w-0 flex-1 truncate rounded-[8px] text-[15px] hover:underline hover:underline-offset-4">
-            {e.displayName ?? e.handle} <span className="text-muted">@{e.handle}</span>
+            {plainText(e.displayName ?? "") || e.handle} <span className="text-muted">@{e.handle}</span>
           </Link>
           <span className="shrink-0 font-mono text-[15px]">{formatBoardValue(board.metric, e.value)}</span>
         </li>

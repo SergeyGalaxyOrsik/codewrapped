@@ -8,6 +8,7 @@
     "dev": "pnpm prepare-brand && next dev --port 3001",
     "build": "pnpm prepare-brand && next build",
     "start": "next start --port 3001",
+    "test": "vitest run",
     "typecheck": "pnpm prepare-brand && tsc --noEmit"
   },
   "dependencies": {
