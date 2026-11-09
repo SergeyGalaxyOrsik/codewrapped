@@ -21,10 +21,11 @@ export const DEFAULT_VISIBILITY: Visibility = {
 };
 
 /** A summary with the sections the owner hid set to null. */
-export type PublicSummary = Omit<Summary, "heatmap" | "models" | "totals"> & {
+export type PublicSummary = Omit<Summary, "heatmap" | "models" | "toolCategories" | "totals"> & {
   heatmap: number[][] | null;
   models: Summary["models"] | null;
-  totals: Omit<Summary["totals"], "costUsd"> & { costUsd: number | null };
+  toolCategories: Summary["toolCategories"] | null;
+  totals: Omit<Summary["totals"], "costUsd" | "toolCalls"> & { costUsd: number | null; toolCalls: number | null };
 };
 
 export type PublicProfile = {
@@ -46,11 +47,19 @@ export function todayIn(timeZone: string, now = new Date()): string {
 }
 
 export function publicSummary(rows: DailyAggregate[], period: Period, today: string, vis: Visibility): PublicSummary {
-  const s = summarize(rows, { period, today, hideFiles: !vis.files, hideRepos: !vis.repos });
+  const s = summarize(rows, {
+    period,
+    today,
+    hideFiles: !vis.files,
+    hideRepos: !vis.repos,
+    hideTools: !vis.tools,
+    hideTimes: !vis.heatmap,
+  });
   return {
     ...s,
-    totals: { ...s.totals, costUsd: vis.cost ? s.totals.costUsd : null },
+    totals: { ...s.totals, costUsd: vis.cost ? s.totals.costUsd : null, toolCalls: vis.tools ? s.totals.toolCalls : null },
     models: vis.models ? s.models.map((m) => (vis.cost ? m : { ...m, costUsd: null })) : null,
+    toolCategories: vis.tools ? s.toolCategories : null,
     topTools: vis.tools ? s.topTools : [],
     heatmap: vis.heatmap ? s.heatmap : null,
     busiestHour: vis.heatmap ? s.busiestHour : null,

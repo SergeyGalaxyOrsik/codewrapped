@@ -24,6 +24,10 @@ export type SummaryOptions = {
   source?: SourceFilter;
   hideFiles?: boolean;
   hideRepos?: boolean;
+  /** Leaves tool use out of the archetype. */
+  hideTools?: boolean;
+  /** Leaves the time of day and week out of the archetype. */
+  hideTimes?: boolean;
   /** Count automated runs (claude -p, Agent SDK, codex exec) in time, sessions and archetype. */
   includeAutomated?: boolean;
 };
@@ -315,7 +319,7 @@ export function summarize(rows: readonly DailyAggregate[], opts: SummaryOptions)
       activeDays: uniqueActiveDays,
       periodDays: days,
     },
-    { hideFiles: opts.hideFiles },
+    { hideFiles: opts.hideFiles, hideTools: opts.hideTools, hideTimes: opts.hideTimes },
   );
 
   return {
