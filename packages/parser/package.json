@@ -12,9 +12,9 @@
   },
   "dependencies": {
     "@codewrapped/stats": "workspace:*",
-    "sql.js": "^1.15.2"
+    "sql.js": "^1.17.0"
   },
   "devDependencies": {
-    "@types/sql.js": "^1.4.11"
+    "@types/sql.js": "^1.16.0"
   }
 }
